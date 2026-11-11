@@ -1,481 +1,2173 @@
-<!DOCTYPE html>
-<html lang="es" class="h-full bg-slate-100">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VISITASA - Control de Visitas y Gestión Maestro</title>
-    <!-- Tailwind CSS (CDN para estilos principales) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chart.js para Gráficos -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- SheetJS para exportar a Excel -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-
-    <style>
-        .matrix-scroll::-webkit-scrollbar { height: 8px; width: 8px; }
-        .matrix-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
-        .matrix-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        .matrix-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        
-        .sticky-col-1 { position: sticky; left: 0px; z-index: 20; }
-        .sticky-col-2 { position: sticky; left: 56px; z-index: 20; }
-        .sticky-col-3 { position: sticky; left: 236px; z-index: 20; }
-        
-        .cell-scheduled { background-color: #dbeafe; color: #1e40af; font-weight: 700; }
-        .cell-executed { background-color: #dcfce7; color: #166534; font-weight: 800; }
-        .cell-issue { background-color: #fef3c7; color: #92400e; font-weight: 800; }
-        .cell-empty { background-color: #ffffff; color: #94a3b8; }
-        .cell-has-note { box-shadow: inset 0 0 0 2px #f59e0b; }
-    </style>
-</head>
-<body class="h-full font-sans text-slate-800 antialiased flex flex-col bg-slate-100 p-3 sm:p-5">
-
-    <!-- HEADER PRINCIPAL -->
-    <header class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 mb-4">
-        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            
-            <div class="flex items-center space-x-3">
-                <div class="bg-sky-600 p-3 rounded-xl text-white font-bold flex items-center justify-center shadow-md">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
-                </div>
-                <div>
-                    <div class="flex items-center gap-2">
-                        <h1 class="text-2xl font-black text-slate-900 tracking-tight">VISITASA</h1>
-                        <span id="syncBadge" class="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200/80 px-2.5 py-0.5 rounded-full">
-                            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                            Modo Local Seguro Activo
-                        </span>
-                    </div>
-                    <p class="text-xs text-slate-500 font-medium mt-0.5">Control de Visitas y Gestión Maestro de Personal y Agencias</p>
-                </div>
-            </div>
-
-            <!-- CONTROLES Y SELECCIÓN DE FECHA -->
-            <div class="flex flex-wrap items-center gap-2">
-                <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg p-1">
-                    <select id="monthSelectHeader" class="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer px-1 py-1">
-                        <option value="1">Enero</option>
-                        <option value="2">Febrero</option>
-                        <option value="3">Marzo</option>
-                        <option value="4">Abril</option>
-                        <option value="5">Mayo</option>
-                        <option value="6">Junio</option>
-                        <option value="7">Julio</option>
-                        <option value="8" selected>Agosto</option>
-                        <option value="9">Septiembre</option>
-                        <option value="10">Octubre</option>
-                        <option value="11">Noviembre</option>
-                        <option value="12">Diciembre</option>
-                    </select>
-
-                    <select id="yearSelectHeader" class="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer px-1 py-1">
-                        <option value="2025">2025</option>
-                        <option value="2026" selected>2026</option>
-                        <option value="2027">2027</option>
-                    </select>
-                </div>
-
-                <button id="btnExportBackup" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer">
-                    <span>Respaldar JSON</span>
-                </button>
-
-                <button id="btnSyncCloud" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer">
-                    <span>Guardar Cambios</span>
-                </button>
-
-                <button id="btnExportMenu" class="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer">
-                    <span>Exportar Excel</span>
-                </button>
-            </div>
-        </div>
-
-        <!-- BARRA DE ESTADO -->
-        <div id="statusBanner" class="mt-3 bg-emerald-50 border border-emerald-200/80 rounded-xl px-4 py-2 flex flex-col sm:flex-row items-center justify-between text-xs text-emerald-900 gap-2">
-            <div class="flex items-center gap-2">
-                <span class="font-medium">Estado: <strong id="storageStatusText" class="font-bold">Almacenamiento Local del Navegador Habilitado</strong></span>
-            </div>
-            <div class="flex items-center gap-2">
-                <span id="syncStatusBadge" class="px-2.5 py-0.5 rounded-md bg-emerald-200/70 text-emerald-800 font-bold text-[11px]">✓ Modo Seguro Red Empresa</span>
-                <span id="lastUpdatedText" class="text-slate-400 font-normal">Sincronizado</span>
-            </div>
-        </div>
-
-        <!-- PESTAÑAS DE NAVEGACIÓN Y FILTROS -->
-        <div class="mt-3 pt-2.5 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-2">
-            <nav class="flex items-center gap-1 overflow-x-auto py-0.5 matrix-scroll shrink-0" id="tabNavContainer">
-                <button data-tab="dashboard" class="tab-btn px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-white bg-sky-600 transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer">
-                    <span>Indicadores & KPIs</span>
-                </button>
-                <button data-tab="matrix" class="tab-btn px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-slate-700 hover:bg-slate-200/60 transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer">
-                    <span>Matriz de Visitas</span>
-                </button>
-                <button data-tab="supervisors" class="tab-btn px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-slate-700 hover:bg-slate-200/60 transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer">
-                    <span>Control por Jefe</span>
-                </button>
-                <button data-tab="audit" class="tab-btn px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-slate-700 hover:bg-slate-200/60 transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer">
-                    <span>Agencias Críticas</span>
-                </button>
-                <button data-tab="master" class="tab-btn px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-amber-900 bg-amber-100/90 border border-amber-300 hover:bg-amber-200 transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer">
-                    <span>Gestión Maestro</span>
-                </button>
-            </nav>
-
-            <div class="flex flex-wrap items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 shrink-0">
-                <div class="flex items-center gap-1.5">
-                    <span class="text-[11px] font-bold text-slate-600">Nodo:</span>
-                    <select id="headerGlobalNodeFilter" class="bg-transparent text-[11px] font-bold text-slate-800 focus:outline-none cursor-pointer">
-                        <option value="ALL">-- Todos los Nodos --</option>
-                    </select>
-                </div>
-                <div class="h-3 w-px bg-slate-300 hidden sm:block"></div>
-                <div class="flex items-center gap-1.5">
-                    <span class="text-[11px] font-bold text-slate-600">Jefe de Zona:</span>
-                    <select id="headerGlobalSupervisorFilter" class="bg-transparent text-[11px] font-bold text-slate-800 focus:outline-none cursor-pointer">
-                        <option value="ALL">-- Todos los Jefes --</option>
-                    </select>
-                </div>
-            </div>
-        </div>
-    </header>
-
-    <!-- SECCIÓN PRINCIPAL -->
-    <main class="flex-1 w-full mx-auto space-y-4">
-
-        <!-- TAB 1: DASHBOARD -->
-        <section id="tab-dashboard" class="tab-content space-y-5">
-            <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
-                <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
-                    <p class="text-[10px] font-extrabold text-slate-400 uppercase">Total Agencias</p>
-                    <h3 id="kpiTotalAgencies" class="text-2xl font-black text-slate-900 mt-0.5">0</h3>
-                </div>
-                <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
-                    <p class="text-[10px] font-extrabold text-slate-400 uppercase">Agencias Prog.</p>
-                    <h3 id="kpiScheduledAgencies" class="text-2xl font-black text-sky-600 mt-0.5">0</h3>
-                </div>
-                <div class="bg-white p-3 rounded-2xl border border-emerald-200 shadow-xs">
-                    <p class="text-[10px] font-extrabold text-slate-400 uppercase">Cobertura Mes</p>
-                    <h3 id="kpiCoverage" class="text-2xl font-black text-emerald-600 mt-0.5">0%</h3>
-                </div>
-                <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
-                    <p class="text-[10px] font-extrabold text-slate-400 uppercase">Visitas Prog. (X)</p>
-                    <h3 id="kpiScheduledVisits" class="text-2xl font-black text-blue-600 mt-0.5">0</h3>
-                </div>
-                <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
-                    <p class="text-[10px] font-extrabold text-slate-400 uppercase">Visitas Ejec. (✓)</p>
-                    <h3 id="kpiExecutedVisits" class="text-2xl font-black text-indigo-600 mt-0.5">0</h3>
-                </div>
-                <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
-                    <p class="text-[10px] font-extrabold text-slate-400 uppercase">Cumplimiento</p>
-                    <h3 id="kpiFulfillment" class="text-2xl font-black text-purple-600 mt-0.5">0%</h3>
-                </div>
-                <div class="bg-white p-3 rounded-2xl border border-amber-200 shadow-xs">
-                    <p class="text-[10px] font-extrabold text-slate-400 uppercase">Sin Visita</p>
-                    <h3 id="kpiUnvisited" class="text-2xl font-black text-amber-500 mt-0.5">0</h3>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                <div class="lg:col-span-8 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                    <h4 class="font-bold text-slate-900 text-sm">Cobertura por Jefe de Zona (%)</h4>
-                    <div class="h-64 relative"><canvas id="chartSupervisors"></canvas></div>
-                </div>
-                <div class="lg:col-span-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                    <h4 class="font-bold text-slate-900 text-sm">Estado Global de Visitas</h4>
-                    <div class="h-64 relative"><canvas id="chartStatusDoughnut"></canvas></div>
-                </div>
-            </div>
-
-            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-                    <h4 class="font-bold text-slate-900 text-sm">Rendimiento Consolidado por Jefe Regional</h4>
-                    <button id="btnExportDashboard" class="text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 px-3.5 py-1.5 rounded-xl border border-slate-300">Exportar Reporte</button>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-xs text-left border-collapse">
-                        <thead class="text-[10px] uppercase bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
-                            <tr>
-                                <th class="px-6 py-3">JEFE DE ZONA / DIRECTOR</th>
-                                <th class="px-4 py-3 text-center">AGENCIAS</th>
-                                <th class="px-4 py-3 text-center">ATENDIDAS</th>
-                                <th class="px-4 py-3 text-center">% COBERTURA</th>
-                                <th class="px-4 py-3 text-center">PROG. (X)</th>
-                                <th class="px-4 py-3 text-center">EJEC. (✓)</th>
-                                <th class="px-4 py-3 text-center">NOVEDAD (!)</th>
-                                <th class="px-4 py-3 text-center">% CUMPLIMIENTO</th>
-                                <th class="px-6 py-3 text-center">ESTADO</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tableSupervisorStats" class="divide-y divide-slate-100 font-medium"></tbody>
-                    </table>
-                </div>
-            </div>
-        </section>
-
-        <!-- TAB 2: MATRIZ DE VISITAS -->
-        <section id="tab-matrix" class="tab-content hidden space-y-4">
-            <div class="bg-white px-4 py-3 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4 text-xs font-medium">
-                <div class="flex items-center gap-3">
-                    <span class="text-slate-400 font-bold uppercase text-[10px]">Leyenda:</span>
-                    <span class="px-2.5 py-1 rounded bg-blue-100 text-blue-800 font-bold">X = Programada</span>
-                    <span class="px-2.5 py-1 rounded bg-emerald-100 text-emerald-800 font-bold">✓ = Ejecutada</span>
-                    <span class="px-2.5 py-1 rounded bg-amber-100 text-amber-800 font-bold">! = Novedad</span>
-                </div>
-                <div class="text-slate-500 text-[11px]">Clic en celda para cambiar estado | <strong>Shift + Clic</strong> para agregar nota</div>
-            </div>
-
-            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <div class="overflow-x-auto matrix-scroll max-h-[620px]">
-                    <table class="w-full text-xs text-left border-collapse">
-                        <thead><tr id="matrixHeaderRow" class="bg-slate-100 text-slate-700 font-bold border-b border-slate-300"></tr></thead>
-                        <tbody id="matrixTableBody"></tbody>
-                    </table>
-                </div>
-            </div>
-        </section>
-
-        <!-- TAB 3: CONTROL POR JEFE -->
-        <section id="tab-supervisors" class="tab-content hidden space-y-4">
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                <div class="lg:col-span-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                    <div class="flex items-center gap-4 border-b border-slate-100 pb-4">
-                        <div id="supAvatar" class="w-14 h-14 rounded-2xl bg-sky-600 text-white font-black text-xl flex items-center justify-center">CM</div>
-                        <div>
-                            <h3 id="supNameDetail" class="font-bold text-slate-900 text-base">Carlos Mendoza</h3>
-                            <p id="supZoneDetail" class="text-xs text-slate-500 font-medium">Zona Norte</p>
-                        </div>
-                    </div>
-                    <div class="space-y-2 text-xs">
-                        <div class="flex justify-between"><span class="text-slate-500">Agencias Asignadas:</span><strong id="supTotalAgencies" class="font-bold text-slate-800">0</strong></div>
-                        <div class="flex justify-between"><span class="text-slate-500">Cobertura Mes:</span><strong id="supCoveragePct" class="font-bold text-emerald-600">0%</strong></div>
-                    </div>
-                </div>
-
-                <div class="lg:col-span-8 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                    <h4 class="font-bold text-slate-800 text-sm border-b pb-3">Agencias y Canales Asignados</h4>
-                    <div id="supAgenciesList" class="space-y-2"></div>
-                </div>
-            </div>
-        </section>
-
-        <!-- TAB 4: AGENCIAS CRÍTICAS -->
-        <section id="tab-audit" class="tab-content hidden space-y-4">
-            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
-                <h3 class="font-bold text-slate-800 text-sm">Agencias Críticas Sin Visita Ejecutada</h3>
-                <span id="unvisitedCountBadge" class="px-2.5 py-1 bg-amber-100 text-amber-800 font-bold rounded-lg text-xs">0 Agencias</span>
-            </div>
-            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <table class="w-full text-xs text-left border-collapse">
-                    <thead class="text-[10px] uppercase bg-slate-50 text-slate-400 font-bold border-b border-slate-200">
-                        <tr>
-                            <th class="px-6 py-3">CÓDIGO</th>
-                            <th class="px-6 py-3">AGENCIA / CANAL</th>
-                            <th class="px-6 py-3">JEFE DE ZONA</th>
-                            <th class="px-6 py-3 text-center">ESTADO</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tableUnvisitedBody" class="divide-y divide-slate-100 font-medium"></tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- TAB 5: GESTIÓN MAESTRO -->
-        <section id="tab-master" class="tab-content hidden space-y-4">
-            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 justify-between">
-                <input type="text" id="inputSearchAgencyMaster" placeholder="Buscar en maestro..." class="p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl">
-                <div class="flex gap-2">
-                    <button id="btnLockMaster" class="px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold">Bloquear</button>
-                    <button id="btnModalAddNode" class="px-3.5 py-2 bg-purple-600 text-white rounded-xl text-xs font-bold">+ Nuevo Nodo</button>
-                    <button id="btnModalAddSupervisor" class="px-3.5 py-2 bg-amber-600 text-white rounded-xl text-xs font-bold">+ Nuevo Jefe</button>
-                    <button id="btnModalAddAgency" class="px-3.5 py-2 bg-sky-600 text-white rounded-xl text-xs font-bold">+ Nueva Agencia</button>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                <div class="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div class="px-5 py-3 border-b bg-slate-50"><h4 class="font-bold text-xs uppercase text-slate-800">Nodos y Directores</h4></div>
-                    <table class="w-full text-xs text-left"><tbody id="tableMasterNodes" class="divide-y divide-slate-100"></tbody></table>
-                </div>
-                <div class="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div class="px-5 py-3 border-b bg-slate-50"><h4 class="font-bold text-xs uppercase text-slate-800">Jefes de Zona</h4></div>
-                    <table class="w-full text-xs text-left"><tbody id="tableMasterSupervisors" class="divide-y divide-slate-100"></tbody></table>
-                </div>
-                <div class="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div class="px-5 py-3 border-b bg-slate-50"><h4 class="font-bold text-xs uppercase text-slate-800">Agencias / Canales</h4></div>
-                    <table class="w-full text-xs text-left"><tbody id="tableMasterAgencies" class="divide-y divide-slate-100"></tbody></table>
-                </div>
-            </div>
-        </section>
-
-    </main>
-
-    <!-- MODAL AUTENTICACIÓN MAESTRO -->
-    <div id="modalMasterAuth" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
-            <h3 class="text-base font-bold text-slate-900">Acceso Seguro a Gestión Maestro</h3>
-            <form id="formMasterAuth" class="space-y-3">
-                <div>
-                    <label class="block text-xs font-bold text-slate-600 mb-1">USUARIO</label>
-                    <input type="text" id="authUsername" required class="w-full p-2 text-xs border rounded-xl" placeholder="admin">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-600 mb-1">CONTRASEÑA</label>
-                    <input type="password" id="authPassword" required class="w-full p-2 text-xs border rounded-xl" placeholder="••••••••">
-                </div>
-                <div id="authErrorMsg" class="hidden text-xs text-rose-600 font-bold bg-rose-50 p-2 rounded-lg">Usuario o contraseña incorrectos.</div>
-                <div class="bg-amber-50 p-2 rounded text-[11px] text-amber-800">Prueba: <strong>admin / admin123</strong></div>
-                <div class="flex justify-end gap-2 pt-2">
-                    <button type="button" class="btn-close-modal px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
-                    <button type="submit" class="px-4 py-2 text-xs font-bold bg-amber-600 text-white rounded-xl">Ingresar</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- SCRIPT DE LÓGICA LOCAL -->
-    <script>
-        const DEFAULT_NODES = [
-            { id: "node_bello", name: "Bello", director: "Jhon Zapata" },
-            { id: "node_castilla", name: "Castilla", director: "Yazmin" },
-            { id: "node_america", name: "La América", director: "Carolina Leal" },
-            { id: "node_guayabal", name: "Guayabal", director: "Johan Cubillos" }
-        ];
-
-        const DEFAULT_SUPERVISORS = [
-            { id: "sup_bello_1", name: "Yenny Cárdenas", zone: "Bello (Jhon Zapata)" },
-            { id: "sup_castilla_1", name: "Dilian", zone: "Castilla (Yazmin)" },
-            { id: "sup_america_1", name: "Jefe Zona América 1", zone: "La América (Carolina Leal)" },
-            { id: "sup_guayabal_1", name: "Jefe Zona Guayabal 1", zone: "Guayabal (Johan Cubillos)" }
-        ];
-
-        const DEFAULT_AGENCIES = [
-            { id: "AG_BEL_01", name: "Agencia Bello Central", supervisorId: "sup_bello_1" },
-            { id: "AG_CAS_01", name: "Agencia Castilla Principal", supervisorId: "sup_castilla_1" },
-            { id: "AG_AME_01", name: "Agencia San Juan", supervisorId: "sup_america_1" },
-            { id: "AG_GUA_01", name: "Agencia Guayabal Plaza", supervisorId: "sup_guayabal_1" }
-        ];
-
-        let appState = {
-            year: 2026, month: 8, daysInMonth: 31,
-            nodes: DEFAULT_NODES, supervisors: DEFAULT_SUPERVISORS, agencies: DEFAULT_AGENCIES,
-            visitsMap: {}, notesMap: {}, activeTab: 'dashboard'
-        };
-
-        let isMasterAuthenticated = false;
-        let chartSupervisorsInstance = null;
-        let chartStatusDoughnutInstance = null;
-
-        function getCellKey(agencyId, day) { return `${agencyId}_${appState.year}_${appState.month}_${day}`; }
-
-        function saveState() {
-            localStorage.setItem('visitasa_local_db', JSON.stringify({
-                nodes: appState.nodes, supervisors: appState.supervisors, agencies: appState.agencies,
-                visitsMap: appState.visitsMap, notesMap: appState.notesMap
-            }));
-            const updatedEl = document.getElementById('lastUpdatedText');
-            if (updatedEl) updatedEl.innerText = `Guardado Local ${new Date().toLocaleTimeString()}`;
-        }
-
-        function loadState() {
-            try {
-                const saved = localStorage.getItem('visitasa_local_db');
-                if (saved) {
-                    const parsed = JSON.parse(saved);
-                    appState.nodes = parsed.nodes || DEFAULT_NODES;
-                    appState.supervisors = parsed.supervisors || DEFAULT_SUPERVISORS;
-                    appState.agencies = parsed.agencies || DEFAULT_AGENCIES;
-                    appState.visitsMap = parsed.visitsMap || {};
-                    appState.notesMap = parsed.notesMap || {};
-                }
-            } catch (e) { console.error("Error al cargar estado local", e); }
-            populateSupervisorDropdowns();
-        }
-
-        function populateSupervisorDropdowns() {
-            const nodeFilter = document.getElementById('headerGlobalNodeFilter');
-            const globalFilter = document.getElementById('headerGlobalSupervisorFilter');
-            
-            const uniqueZones = [...new Set(appState.nodes.map(n => `${n.name} (${n.director})`))];
-
-            if (nodeFilter) {
-                let nodeHtml = `<option value="ALL">-- Todos los Nodos --</option>`;
-                uniqueZones.forEach(z => nodeHtml += `<option value="${z}">${z}</option>`);
-                nodeFilter.innerHTML = nodeHtml;
-            }
-
-            if (globalFilter) {
-                let supHtml = `<option value="ALL">-- Todos los Jefes --</option>`;
-                appState.supervisors.forEach(s => supHtml += `<option value="${s.id}">${s.name}</option>`);
-                globalFilter.innerHTML = supHtml;
-            }
-        }
-
-        function switchTab(tabId) {
-            if (tabId === 'master' && !isMasterAuthenticated) {
-                document.getElementById('modalMasterAuth').classList.remove('hidden');
-                return;
-            }
-            appState.activeTab = tabId;
-            document.querySelectorAll('.tab-content').forEach(sec => sec.classList.toggle('hidden', sec.id !== `tab-${tabId}`));
-            renderActiveTab();
-        }
-
-        function renderActiveTab() {
-            if (appState.activeTab === 'dashboard') renderDashboard();
-            else if (appState.activeTab === 'matrix') renderMatrix();
-        }
-
-        function renderDashboard() {
-            document.getElementById('kpiTotalAgencies').innerText = appState.agencies.length;
-        }
-
-        function renderMatrix() {
-            const headerRow = document.getElementById('matrixHeaderRow');
-            const tbody = document.getElementById('matrixTableBody');
-            
-            let headerHtml = `<th class="px-3 py-2 text-center">N°</th><th class="px-4 py-2">AGENCIA</th><th class="px-4 py-2">JEFE ZONA</th>`;
-            for (let d = 1; d <= appState.daysInMonth; d++) headerHtml += `<th class="px-2 py-2 text-center">${d}</th>`;
-            headerRow.innerHTML = headerHtml;
-
-            let bodyHtml = "";
-            appState.agencies.forEach((ag, idx) => {
-                const sup = appState.supervisors.find(s => s.id === ag.supervisorId) || { name: 'Sin Asignar' };
-                bodyHtml += `<tr><td class="px-3 py-2">${idx + 1}</td><td class="px-4 py-2 font-bold">${ag.name}</td><td class="px-4 py-2">${sup.name}</td>`;
-                for (let d = 1; d <= appState.daysInMonth; d++) {
-                    const key = getCellKey(ag.id, d);
-                    const val = appState.visitsMap[key] || '';
-                    bodyHtml += `<td class="px-2 py-2 text-center cursor-pointer border" onclick="toggleCell('${key}')">${val}</td>`;
-                }
-                bodyHtml += `</tr>`;
-            });
-            tbody.innerHTML = bodyHtml;
-        }
-
-        window.toggleCell = function(key) {
-            const current = appState.visitsMap[key] || '';
-            if (current === '') appState.visitsMap[key] = 'X';
-            else if (current === 'X') appState.visitsMap[key] = '✓';
-            else if (current === '✓') appState.visitsMap[key] = '!';
-            else delete appState.visitsMap[key];
-            saveState();
-            renderMatrix();
-        };
-
-        document.addEventListener('DOMContentLoaded', () => {
-            loadState();
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
-            document.getElementById('formMasterAuth')?.addEventListener('submit', (e) => {
-                e.preventDefault();
-                if (document.getElementById('authUsername').value === 'admin' && document.getElementById('authPassword').value === 'admin123') {
-                    isMasterAuthenticated = true;
-                    document.getElementById('modalMasterAuth').classList.add('hidden');
-                    switchTab('master');
-                } else {
-                    document.getElementById('authErrorMsg').classList.remove('hidden');
-                }
-            });
-            document.querySelectorAll('.btn-close-modal').forEach(b => b.addEventListener('click', () => document.getElementById('modalMasterAuth').classList.add('hidden')));
-            renderActiveTab();
-        });
-    </script>
-</body>
-</html>
+<!DOCTYPE html>  
+<html lang="es" class="h-full bg-slate-100">  
+<head>  
+    <meta charset="UTF-8">  
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">  
+    <title>VISITASA - Control de Visitas y Gestión Maestro</title>  
+    <script src="https://cdn.tailwindcss.com"></script>  
+    <script>  
+        tailwind.config = {  
+            darkMode: 'class',  
+            theme: {  
+                extend: {  
+                    colors: {  
+                        brand: {  
+                            50: '#f0f9ff',  
+                            100: '#e0f2fe',  
+                            500: '#0284c7',  
+                            600: '#0369a1',  
+                            700: '#075985',  
+                            900: '#0c4a6e',  
+                        },  
+                        accent: {  
+                            500: '#f97316',  
+                            600: '#ea580c',  
+                            700: '#c2410c'  
+                        }  
+                    }  
+                }  
+            }  
+        }  
+    </script>  
+    <!-- Chart.js CDN -->  
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>  
+    <!-- SheetJS CDN for CSV / Excel support -->  
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>  
+    <!-- Lucide Icons -->  
+    <script src="https://unpkg.com/lucide@latest"></script>  
+  
+    <!-- Firebase SDK Modules for Real-Time Cloud Data Persistence -->  
+    <script type="module">  
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";  
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";  
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";  
+  
+        // Firebase Configuration Setup  
+        const firebaseConfig = typeof __firebase_config !== 'undefined'   
+            ? JSON.parse(__firebase_config)   
+            : { apiKey: "demo", authDomain: "demo.firebaseapp.com", projectId: "demo", storageBucket: "demo.appspot.com" };  
+          
+        // Use a fixed global network ID so all Netlify users share the exact same cloud database  
+        const appId = 'argiro-visitasa-sync-network-2026';  
+  
+        const app = initializeApp(firebaseConfig);  
+        const auth = getAuth(app);  
+        const db = getFirestore(app);  
+  
+        window.firebaseDB = db;  
+        window.firebaseAuth = auth;  
+        window.firebaseAppId = appId;  
+        window.firebaseDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'visitasa_state', 'main');  
+  
+        // Authenticate User  
+        async function authenticate() {  
+            try {  
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {  
+                    await signInWithCustomToken(auth, __initial_auth_token);  
+                } else {  
+                    await signInAnonymously(auth);  
+                }  
+            } catch (err) {  
+                console.warn("Auth Fallback:", err);  
+            }  
+        }  
+  
+        onAuthStateChanged(auth, (user) => {  
+            if (user) {  
+                window.currentUser = user;  
+                // Subscribe to real-time Cloud updates across all browsers  
+                onSnapshot(window.firebaseDocRef, (snapshot) => {  
+                    if (snapshot.exists()) {  
+                        const cloudData = snapshot.data();  
+                        if (cloudData) {  
+                            window.appState.nodes = cloudData.nodes || window.DEFAULT_NODES;  
+                            window.appState.supervisors = cloudData.supervisors || window.DEFAULT_SUPERVISORS;  
+                            window.appState.agencies = cloudData.agencies || window.DEFAULT_AGENCIES;  
+                            window.appState.visitsMap = cloudData.visitsMap || {};  
+                            window.appState.notesMap = cloudData.notesMap || {};  
+                            window.appState.customLogo = cloudData.customLogo || null;  
+                              
+                            if (window.populateSupervisorDropdowns && window.renderActiveTab) {  
+                                window.populateSupervisorDropdowns();  
+                                window.renderActiveTab();  
+                            }  
+                            if (window.renderLogoContainer) {  
+                                window.renderLogoContainer();  
+                            }  
+                            const updatedEl = document.getElementById('lastUpdatedText');  
+                            if (updatedEl) updatedEl.innerText = `Nube Sincronizada ${new Date().toLocaleTimeString()}`;  
+                        }  
+                    }  
+                }, (error) => {  
+                    console.error("Firestore Listen Error:", error);  
+                });  
+            }  
+        });  
+  
+        authenticate();  
+    </script>  
+  
+    <style>  
+        /* Custom scrollbar styling */  
+        .matrix-scroll::-webkit-scrollbar {  
+            height: 8px;  
+            width: 8px;  
+        }  
+        .matrix-scroll::-webkit-scrollbar-track {  
+            background: #f1f5f9;  
+        }  
+        .matrix-scroll::-webkit-scrollbar-thumb {  
+            background: #cbd5e1;  
+            border-radius: 4px;  
+        }  
+        .matrix-scroll::-webkit-scrollbar-thumb:hover {  
+            background: #94a3b8;  
+        }  
+        /* Sticky Column Positions for Spreadsheet Matrix */  
+        .sticky-col-1 {  
+            position: sticky;  
+            left: 0px;  
+            z-index: 20;  
+        }  
+        .sticky-col-2 {  
+            position: sticky;  
+            left: 56px;  
+            z-index: 20;  
+        }  
+        .sticky-col-3 {  
+            position: sticky;  
+            left: 236px;  
+            z-index: 20;  
+        }  
+        /* Cell States */  
+        .cell-scheduled {  
+            background-color: #dbeafe;  
+            color: #1e40af;  
+            font-weight: 700;  
+        }  
+        .cell-executed {  
+            background-color: #dcfce7;  
+            color: #166534;  
+            font-weight: 800;  
+        }  
+        .cell-issue {  
+            background-color: #fef3c7;  
+            color: #92400e;  
+            font-weight: 800;  
+        }  
+        .cell-empty {  
+            background-color: #ffffff;  
+            color: #94a3b8;  
+        }  
+        .cell-has-note {  
+            box-shadow: inset 0 0 0 2px #f59e0b;  
+        }  
+    </style>  
+</head>  
+<body class="h-full font-sans text-slate-800 antialiased flex flex-col bg-slate-100 p-3 sm:p-5">  
+  
+    <!-- TOP HEADER CONTAINER -->  
+    <header class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 mb-4">  
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">  
+              
+            <!-- Logo & Brand Header -->  
+            <div class="flex items-center space-x-3">  
+                <div id="header-logo-container" class="bg-sky-600 p-3 rounded-xl text-white font-bold flex items-center justify-center shadow-md overflow-hidden w-12 h-12">  
+                    <i data-lucide="cloud-cog" class="w-6 h-6"></i>  
+                </div>  
+                <div>  
+                    <div class="flex items-center gap-2">  
+                        <h1 class="text-2xl font-black text-slate-900 tracking-tight">VISITASA</h1>  
+                        <span id="syncBadge" class="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200/80 px-2.5 py-0.5 rounded-full">  
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>  
+                            Base de Datos en la Nube Activa  
+                        </span>  
+                    </div>  
+                    <p class="text-xs text-slate-500 font-medium mt-0.5">Control de Visitas y Gestión Maestro de Personal y Agencias</p>  
+                </div>  
+            </div>  
+  
+            <!-- Header Action Controls & Date Selectors -->  
+            <div class="flex flex-wrap items-center gap-2">  
+  
+                <!-- Month & Year Selectors -->  
+                <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg p-1">  
+                    <select id="monthSelectHeader" class="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer px-1 py-1">  
+                        <option value="1">Enero</option>  
+                        <option value="2">Febrero</option>  
+                        <option value="3">Marzo</option>  
+                        <option value="4">Abril</option>  
+                        <option value="5">Mayo</option>  
+                        <option value="6">Junio</option>  
+                        <option value="7">Julio</option>  
+                        <option value="8" selected>Agosto</option>  
+                        <option value="9">Septiembre</option>  
+                        <option value="10">Octubre</option>  
+                        <option value="11">Noviembre</option>  
+                        <option value="12">Diciembre</option>  
+                    </select>  
+  
+                    <select id="yearSelectHeader" class="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer px-1 py-1">  
+                        <option value="2025">2025</option>  
+                        <option value="2026" selected>2026</option>  
+                        <option value="2027">2027</option>  
+                    </select>  
+                </div>  
+  
+                <!-- Backup JSON Backup -->  
+                <button id="btnExportBackup" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer" title="Descargar copia de seguridad en archivo .json">  
+                    <i data-lucide="database-backup" class="w-4 h-4 text-purple-600"></i>  
+                    <span class="hidden sm:inline">Respaldar</span>  
+                </button>  
+  
+                <!-- Sync to Cloud / Save Local -->  
+                <button id="btnSyncCloud" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer">  
+                    <i data-lucide="cloud-upload" class="w-4 h-4"></i>  
+                    <span>Sincronizar</span>  
+                </button>  
+  
+                <!-- Export Menu Button -->  
+                <button id="btnExportMenu" class="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer">  
+                    <i data-lucide="download" class="w-4 h-4"></i>  
+                    <span>Exportar</span>  
+                    <i data-lucide="chevron-down" class="w-3.5 h-3.5 opacity-70"></i>  
+                </button>  
+            </div>  
+        </div>  
+  
+        <!-- STATUS ALERT BANNER -->  
+        <div id="statusBanner" class="mt-3 bg-emerald-50 border border-emerald-200/80 rounded-xl px-4 py-2 flex flex-col sm:flex-row items-center justify-between text-xs text-emerald-900 gap-2">  
+            <div class="flex items-center gap-2">  
+                <i data-lucide="cloud-check" class="w-4 h-4 text-emerald-600"></i>  
+                <span class="font-medium">Estado: <strong id="storageStatusText" class="font-bold">Sincronización remota automática habilitada para Netlify</strong></span>  
+            </div>  
+            <div class="flex items-center gap-2">  
+                <span id="syncStatusBadge" class="px-2.5 py-0.5 rounded-md bg-emerald-200/70 text-emerald-800 font-bold text-[11px]">✓ Nube Conectada</span>  
+                <span id="lastUpdatedText" class="text-slate-400 font-normal">Sincronizado</span>  
+            </div>  
+        </div>  
+  
+        <!-- NAVIGATION TABS ROW -->  
+        <div class="mt-3 pt-2.5 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-2">  
+            <nav class="flex items-center gap-1 overflow-x-auto py-0.5 matrix-scroll shrink-0" id="tabNavContainer">  
+                <button data-tab="dashboard" class="tab-btn px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-white bg-sky-600 shadow-xs transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer">  
+                    <i data-lucide="bar-chart-2" class="w-3.5 h-3.5"></i>  
+                    <span>Indicadores & KPIs</span>  
+                </button>  
+                <button data-tab="matrix" class="tab-btn px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-slate-700 hover:bg-slate-200/60 transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer">  
+                    <i data-lucide="grid" class="w-3.5 h-3.5"></i>  
+                    <span>Matriz de Visitas</span>  
+                </button>  
+                <button data-tab="supervisors" class="tab-btn px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-slate-700 hover:bg-slate-200/60 transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer">  
+                    <i data-lucide="user" class="w-3.5 h-3.5"></i>  
+                    <span>Control por Jefe</span>  
+                </button>  
+                <button data-tab="audit" class="tab-btn px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-slate-700 hover:bg-slate-200/60 transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer">  
+                    <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>  
+                    <span>Agencias Críticas</span>  
+                </button>  
+                <button data-tab="master" class="tab-btn px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-amber-900 bg-amber-100/90 border border-amber-300 hover:bg-amber-200 transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer">  
+                    <i data-lucide="sliders" class="w-3.5 h-3.5"></i>  
+                    <span>Gestión Maestro</span>  
+                </button>  
+            </nav>  
+  
+            <!-- Hierarchical Node Filter in Top Bar (Cascading Filters) -->  
+            <div class="flex flex-wrap items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 shadow-xs shrink-0 self-start md:self-auto">  
+                <div class="flex items-center gap-1.5">  
+                    <i data-lucide="git-fork" class="w-3.5 h-3.5 text-purple-600"></i>  
+                    <span class="text-[11px] font-bold text-slate-600 whitespace-nowrap">Nodo:</span>  
+                    <select id="headerGlobalNodeFilter" class="bg-transparent text-[11px] font-bold text-slate-800 focus:outline-none cursor-pointer pr-1">  
+                        <option value="ALL">-- Todos los Nodos --</option>  
+                    </select>  
+                </div>  
+  
+                <div class="h-3 w-px bg-slate-300 hidden sm:block"></div>  
+  
+                <div class="flex items-center gap-1.5">  
+                    <i data-lucide="user" class="w-3.5 h-3.5 text-sky-600"></i>  
+                    <span class="text-[11px] font-bold text-slate-600 whitespace-nowrap">Jefe de Zona:</span>  
+                    <select id="headerGlobalSupervisorFilter" class="bg-transparent text-[11px] font-bold text-slate-800 focus:outline-none cursor-pointer pr-1">  
+                        <option value="ALL">-- Todos los Jefes --</option>  
+                    </select>  
+                </div>  
+            </div>  
+        </div>  
+    </header>  
+  
+    <!-- MAIN CONTAINER FOR TAB MODULES -->  
+    <main class="flex-1 w-full mx-auto space-y-4">  
+  
+        <!-- TAB 1: DASHBOARD & KPIS -->  
+        <section id="tab-dashboard" class="tab-content space-y-5">  
+            <!-- KPI Summary Cards Grid (7 Columns Compact Row) -->  
+            <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-2.5">  
+                  
+                <!-- Card 1: Total Agencias -->  
+                <div class="bg-white p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between min-w-0">  
+                    <div class="min-w-0 flex-1 pr-1">  
+                        <p class="text-[9px] sm:text-[10px] font-extrabold text-slate-400 uppercase tracking-wider truncate">Total Agencias</p>  
+                        <h3 id="kpiTotalAgencies" class="text-xl sm:text-2xl font-black text-slate-900 mt-0.5 leading-none">0</h3>  
+                        <p class="text-[9.5px] sm:text-[10px] text-slate-400 mt-1 truncate">Red registrada</p>  
+                    </div>  
+                    <div class="w-8 h-8 rounded-2xl text-sky-600 border border-sky-100 bg-sky-50/60 flex items-center justify-center shrink-0">  
+                        <i data-lucide="building-2" class="w-4 h-4"></i>  
+                    </div>  
+                </div>  
+  
+                <!-- Card 2: Agencias Programadas -->  
+                <div class="bg-white p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between min-w-0">  
+                    <div class="min-w-0 flex-1 pr-1">  
+                        <p class="text-[9px] sm:text-[10px] font-extrabold text-slate-400 uppercase tracking-wider truncate">Agencias Prog.</p>  
+                        <h3 id="kpiScheduledAgencies" class="text-xl sm:text-2xl font-black text-sky-600 mt-0.5 leading-none">0</h3>  
+                        <p id="kpiScheduledAgenciesSub" class="text-[9.5px] sm:text-[10px] text-slate-400 mt-1 truncate">0 de 0 agencias</p>  
+                    </div>  
+                    <div class="w-8 h-8 rounded-2xl text-sky-600 border border-sky-100 bg-sky-50/60 flex items-center justify-center shrink-0">  
+                        <i data-lucide="calendar" class="w-4 h-4"></i>  
+                    </div>  
+                </div>  
+  
+                <!-- Card 3: Cobertura Agencias -->  
+                <div class="bg-white p-2.5 sm:p-3 rounded-2xl border border-emerald-200/80 shadow-xs flex items-center justify-between min-w-0">  
+                    <div class="min-w-0 flex-1 pr-1">  
+                        <p class="text-[9px] sm:text-[10px] font-extrabold text-slate-400 uppercase tracking-wider truncate">Cobertura Mes</p>  
+                        <h3 id="kpiCoverage" class="text-xl sm:text-2xl font-black text-emerald-600 mt-0.5 leading-none">0%</h3>  
+                        <p id="kpiAttendedSub" class="text-[9.5px] sm:text-[10px] text-slate-400 mt-1 truncate">0 de 0 atendidas</p>  
+                    </div>  
+                    <div class="w-8 h-8 rounded-2xl text-emerald-600 border border-emerald-100 bg-emerald-50/60 flex items-center justify-center shrink-0">  
+                        <i data-lucide="check-circle" class="w-4 h-4"></i>  
+                    </div>  
+                </div>  
+  
+                <!-- Card 4: Visitas Programadas Totales -->  
+                <div class="bg-white p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between min-w-0">  
+                    <div class="min-w-0 flex-1 pr-1">  
+                        <p class="text-[9px] sm:text-[10px] font-extrabold text-slate-400 uppercase tracking-wider truncate">Visitas Prog. (X)</p>  
+                        <h3 id="kpiScheduledVisits" class="text-xl sm:text-2xl font-black text-blue-600 mt-0.5 leading-none">0</h3>  
+                        <p class="text-[9.5px] sm:text-[10px] text-slate-400 mt-1 truncate">Total citas en agenda</p>  
+                    </div>  
+                    <div class="w-8 h-8 rounded-2xl text-blue-600 border border-blue-100 bg-blue-50/60 flex items-center justify-center shrink-0">  
+                        <i data-lucide="calendar-days" class="w-4 h-4"></i>  
+                    </div>  
+                </div>  
+  
+                <!-- Card 5: Visitas Ejecutadas Totales -->  
+                <div class="bg-white p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between min-w-0">  
+                    <div class="min-w-0 flex-1 pr-1">  
+                        <p class="text-[9px] sm:text-[10px] font-extrabold text-slate-400 uppercase tracking-wider truncate">Visitas Ejec. (✓)</p>  
+                        <h3 id="kpiExecutedVisits" class="text-xl sm:text-2xl font-black text-indigo-600 mt-0.5 leading-none">0</h3>  
+                        <p class="text-[9.5px] sm:text-[10px] text-slate-400 mt-1 truncate">Total citas realizadas</p>  
+                    </div>  
+                    <div class="w-8 h-8 rounded-2xl text-indigo-600 border border-indigo-100 bg-indigo-50/60 flex items-center justify-center shrink-0">  
+                        <i data-lucide="check-check" class="w-4 h-4"></i>  
+                    </div>  
+                </div>  
+  
+                <!-- Card 6: Cumplimiento Visitas -->  
+                <div class="bg-white p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between min-w-0">  
+                    <div class="min-w-0 flex-1 pr-1">  
+                        <p class="text-[9px] sm:text-[10px] font-extrabold text-slate-400 uppercase tracking-wider truncate">Cumplimiento</p>  
+                        <h3 id="kpiFulfillment" class="text-xl sm:text-2xl font-black text-purple-600 mt-0.5 leading-none">0%</h3>  
+                        <p class="text-[9.5px] sm:text-[10px] text-slate-400 mt-1 truncate">Ejec. / Programadas</p>  
+                    </div>  
+                    <div class="w-8 h-8 rounded-2xl text-purple-600 border border-purple-100 bg-purple-50/60 flex items-center justify-center shrink-0">  
+                        <i data-lucide="trending-up" class="w-4 h-4"></i>  
+                    </div>  
+                </div>  
+  
+                <!-- Card 7: Agencias Sin Visita -->  
+                <div class="bg-white p-2.5 sm:p-3 rounded-2xl border border-amber-200/80 shadow-xs flex items-center justify-between min-w-0">  
+                    <div class="min-w-0 flex-1 pr-1">  
+                        <p class="text-[9px] sm:text-[10px] font-extrabold text-slate-400 uppercase tracking-wider truncate">Sin Visita</p>  
+                        <h3 id="kpiUnvisited" class="text-xl sm:text-2xl font-black text-amber-500 mt-0.5 leading-none">0</h3>  
+                        <p id="kpiUnvisitedSub" class="text-[9.5px] sm:text-[10px] text-slate-400 mt-1 truncate">Sin visita ejecutada</p>  
+                    </div>  
+                    <div class="w-8 h-8 rounded-2xl text-amber-500 border border-amber-100 bg-amber-50/60 flex items-center justify-center shrink-0">  
+                        <i data-lucide="alert-circle" class="w-4 h-4"></i>  
+                    </div>  
+                </div>  
+  
+            </div>  
+  
+            <!-- Dashboard Charts Grid -->  
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">  
+                  
+                <!-- Left Bar Chart -->  
+                <div class="lg:col-span-8 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">  
+                    <div class="flex items-center justify-between border-b pb-3 border-slate-100">  
+                        <h4 class="font-bold text-slate-900 text-sm flex items-center gap-2">  
+                            <i data-lucide="users" class="w-4 h-4 text-sky-600"></i>  
+                            Cobertura por Jefe de Zona (%)  
+                        </h4>  
+                        <span class="text-[11px] font-bold bg-slate-100 text-slate-500 px-2.5 py-1 rounded-lg">Meta: 100%</span>  
+                    </div>  
+                    <div class="h-64 relative">  
+                        <canvas id="chartSupervisors"></canvas>  
+                    </div>  
+                </div>  
+  
+                <!-- Right Donut Chart -->  
+                <div class="lg:col-span-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">  
+                    <div class="flex items-center justify-between border-b pb-3 border-slate-100">  
+                        <h4 class="font-bold text-slate-900 text-sm flex items-center gap-2">  
+                            <i data-lucide="pie-chart" class="w-4 h-4 text-sky-600"></i>  
+                            Estado Global de Visitas  
+                        </h4>  
+                        <span class="text-[11px] text-slate-400 font-medium">Período Actual</span>  
+                    </div>  
+                    <div class="h-64 relative flex items-center justify-center">  
+                        <canvas id="chartStatusDoughnut"></canvas>  
+                    </div>  
+                </div>  
+            </div>  
+  
+            <!-- Consolidated Table Matching Exact Design -->  
+            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">  
+                <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-white">  
+                    <div>  
+                        <h4 class="font-bold text-slate-900 text-sm flex items-center gap-2">  
+                            <i data-lucide="award" class="w-4 h-4 text-sky-600"></i>  
+                            Rendimiento Consolidado por Jefe Regional  
+                        </h4>  
+                        <p class="text-xs text-slate-400 font-medium mt-0.5">Efectividad y grado de avance de itinerarios por zona</p>  
+                    </div>  
+                    <button id="btnExportDashboard" class="text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 px-3.5 py-1.5 rounded-xl border border-slate-300 flex items-center gap-1.5 shadow-xs transition cursor-pointer">  
+                        <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-emerald-600"></i>  
+                        Exportar Reporte  
+                    </button>  
+                </div>  
+                <div class="overflow-x-auto">  
+                    <table class="w-full text-xs text-left border-collapse">  
+                        <thead class="text-[10px] uppercase bg-slate-50/80 text-slate-500 font-bold border-b border-slate-200 tracking-wider">  
+                            <tr>  
+                                <th class="px-6 py-3">JEFE DE ZONA / DIRECTOR</th>  
+                                <th class="px-4 py-3 text-center">AGENCIAS</th>  
+                                <th class="px-4 py-3 text-center">ATENDIDAS</th>  
+                                <th class="px-4 py-3 text-center">% COBERTURA</th>  
+                                <th class="px-4 py-3 text-center">PROG. (X)</th>  
+                                <th class="px-4 py-3 text-center">EJEC. (✓)</th>  
+                                <th class="px-4 py-3 text-center">NOVEDAD (!)</th>  
+                                <th class="px-4 py-3 text-center">% CUMPLIMIENTO</th>  
+                                <th class="px-6 py-3 text-center">ESTADO</th>  
+                            </tr>  
+                        </thead>  
+                        <tbody id="tableSupervisorStats" class="divide-y divide-slate-100 font-medium">  
+                            <!-- Populated dynamically -->  
+                        </tbody>  
+                    </table>  
+                </div>  
+            </div>  
+        </section>  
+  
+        <!-- TAB 2: MATRIZ EXCEL DE VISITAS -->  
+        <section id="tab-matrix" class="tab-content hidden space-y-4">  
+            <!-- Matrix Legend & Quick Guidance Bar -->  
+            <div class="bg-white px-4 py-3 rounded-xl border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-4 text-xs font-medium">  
+                <div class="flex items-center gap-3">  
+                    <span class="text-slate-400 font-bold uppercase text-[10px]">Atajos de Estado:</span>  
+                    <span class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-blue-100 text-blue-800 font-bold"><strong>X</strong> = Programada</span>  
+                    <span class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-100 text-emerald-800 font-bold"><strong>✓</strong> = Ejecutada</span>  
+                    <span class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-100 text-amber-800 font-bold"><strong>!</strong> = Novedad</span>  
+                </div>  
+                <div class="flex items-center gap-2 text-slate-400 font-medium text-[11px]">  
+                    <i data-lucide="info" class="w-3.5 h-3.5 text-sky-500"></i>  
+                    <span>Clic en celda para conmutar estado • <strong>Shift + Clic</strong> para agregar nota/observación</span>  
+                </div>  
+            </div>  
+  
+            <!-- Matrix Table Container -->  
+            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">  
+                <div class="overflow-x-auto matrix-scroll max-h-[620px]">  
+                    <table class="w-full text-xs text-left border-collapse">  
+                        <thead>  
+                            <tr id="matrixHeaderRow" class="bg-slate-100 text-slate-700 font-bold border-b border-slate-300">  
+                                <!-- Dynamic Header -->  
+                            </tr>  
+                        </thead>  
+                        <tbody id="matrixTableBody">  
+                            <!-- Dynamic Body -->  
+                        </tbody>  
+                    </table>  
+                </div>  
+            </div>  
+        </section>  
+  
+        <!-- TAB 3: CONTROL POR JEFE & VISITAS -->  
+        <section id="tab-supervisors" class="tab-content hidden space-y-4">  
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">  
+                <!-- Supervisor Profile Card -->  
+                <div class="lg:col-span-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">  
+                    <div class="flex items-center gap-4 border-b border-slate-100 pb-4">  
+                        <div id="supAvatar" class="w-14 h-14 rounded-2xl bg-sky-600 text-white font-black text-xl flex items-center justify-center shadow-md">  
+                            CM  
+                        </div>  
+                        <div>  
+                            <h3 id="supNameDetail" class="font-bold text-slate-900 text-base">Carlos Mendoza</h3>  
+                            <p id="supZoneDetail" class="text-xs text-slate-500 font-medium">Zona Norte</p>  
+                            <span id="supAgenciesBadge" class="inline-block mt-1 text-[10px] font-bold bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full">3 Canales</span>  
+                        </div>  
+                    </div>  
+  
+                    <div class="space-y-3">  
+                        <div class="flex justify-between text-xs">  
+                            <span class="text-slate-500 font-medium">Agencias Asignadas:</span>  
+                            <strong id="supTotalAgencies" class="font-bold text-slate-800">0</strong>  
+                        </div>  
+                        <div class="flex justify-between text-xs">  
+                            <span class="text-slate-500 font-medium">Cobertura Mes:</span>  
+                            <strong id="supCoveragePct" class="font-bold text-emerald-600">0%</strong>  
+                        </div>  
+                    </div>  
+                </div>  
+  
+                <!-- Supervisor Agencies List Card -->  
+                <div class="lg:col-span-8 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">  
+                    <h4 class="font-bold text-slate-800 text-sm border-b border-slate-100 pb-3 flex items-center justify-between">  
+                        <span>Agencias y Canales Asignados</span>  
+                    </h4>  
+                    <div id="supAgenciesList" class="space-y-2">  
+                        <!-- Dynamic Agencies List -->  
+                    </div>  
+                </div>  
+            </div>  
+        </section>  
+  
+        <!-- TAB 4: AGENCIAS CRÍTICAS (SIN VISITA) -->  
+        <section id="tab-audit" class="tab-content hidden space-y-4">  
+            <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">  
+                <div>  
+                    <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">  
+                        <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-500"></i>  
+                        Agencias Críticas Sin Visita Ejecutada  
+                    </h3>  
+                    <p class="text-xs text-slate-500 mt-0.5">Canales y agencias que aún no han recibido ninguna visita efectuada (✓) en el mes seleccionado</p>  
+                </div>  
+                <div class="flex items-center gap-2">  
+                    <span id="unvisitedCountBadge" class="px-2.5 py-1 bg-amber-100 text-amber-800 font-bold rounded-lg text-xs">0 Agencias</span>  
+                </div>  
+            </div>  
+  
+            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">  
+                <div class="overflow-x-auto">  
+                    <table class="w-full text-xs text-left border-collapse">  
+                        <thead class="text-[10px] uppercase bg-slate-50 text-slate-400 font-bold border-b border-slate-200">  
+                            <tr>  
+                                <th class="px-6 py-3">CÓDIGO</th>  
+                                <th class="px-6 py-3">AGENCIA / CANAL</th>  
+                                <th class="px-6 py-3">JEFE DE ZONA</th>  
+                                <th class="px-6 py-3 text-center">ESTADO ATENCIÓN</th>  
+                            </tr>  
+                        </thead>  
+                        <tbody id="tableUnvisitedBody" class="divide-y divide-slate-100 font-medium">  
+                            <!-- Populated dynamically -->  
+                        </tbody>  
+                    </table>  
+                </div>  
+            </div>  
+        </section>  
+  
+        <!-- TAB 5: GESTIÓN DE PERSONAL Y AGENCIAS (MASTER CRUD) -->  
+        <section id="tab-master" class="tab-content hidden space-y-4">  
+            <!-- Custom Logo Upload Card -->  
+            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">  
+                <div class="border-b border-slate-100 pb-2">  
+                    <h4 class="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-2">  
+                        <i data-lucide="image" class="w-4 h-4 text-sky-600"></i>  
+                        Personalizar Logotipo Institucional (PNG Transparente)  
+                    </h4>  
+                </div>  
+                <div class="flex flex-col sm:flex-row items-center gap-4">  
+                    <div id="maestro-logo-preview" class="w-16 h-16 bg-slate-50 rounded-xl border border-dashed border-slate-300 flex items-center justify-center overflow-hidden shrink-0">  
+                        <span class="text-[10px] text-slate-400">Sin logo</span>  
+                    </div>  
+                    <div class="flex-1 space-y-1 w-full">  
+                        <label class="block text-xs font-bold text-slate-600">Sube tu archivo de imagen (PNG, JPG o SVG):</label>  
+                        <input type="file" id="logo-file-input" accept="image/png, image/jpeg, image/svg+xml" onchange="handleLogoUpload(event)" class="w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100 cursor-pointer">  
+                    </div>  
+                    <div>  
+                        <button onclick="resetLogo()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer">Restaurar</button>  
+                    </div>  
+                </div>  
+            </div>  
+  
+            <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">  
+                <div class="relative min-w-[240px] flex-1 w-full">  
+                    <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-slate-400"></i>  
+                    <input type="text" id="inputSearchAgencyMaster" placeholder="Buscar en maestro por nombre o código..." class="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500">  
+                </div>  
+  
+                <div class="flex items-center gap-2 w-full md:w-auto justify-end flex-wrap">  
+                    <button id="btnLockMaster" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer" title="Bloquear acceso a maestro">  
+                        <i data-lucide="lock" class="w-3.5 h-3.5 text-slate-500"></i>  
+                        <span>Bloquear</span>  
+                    </button>  
+                    <button id="btnModalAddNode" class="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer">  
+                        <i data-lucide="git-fork" class="w-4 h-4"></i>  
+                        <span>+ Nuevo Nodo/Director</span>  
+                    </button>  
+                    <button id="btnModalAddSupervisor" class="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer">  
+                        <i data-lucide="user-plus" class="w-4 h-4"></i>  
+                        <span>+ Nuevo Jefe</span>  
+                    </button>  
+                    <button id="btnModalAddAgency" class="px-3.5 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer">  
+                        <i data-lucide="plus-circle" class="w-4 h-4"></i>  
+                        <span>+ Nueva Agencia</span>  
+                    </button>  
+                </div>  
+            </div>  
+  
+            <!-- 3 Columns Layout for Nodes, Supervisors & Agencies -->  
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">  
+  
+                <!-- 1. Nodes / Commercial Directors Card -->  
+                <div class="lg:col-span-4 bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">  
+                    <div class="px-5 py-3.5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">  
+                        <h4 class="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-2">  
+                            <i data-lucide="git-fork" class="w-4 h-4 text-purple-600"></i>  
+                            Nodos y Directores  
+                        </h4>  
+                        <button id="btnSmallAddNode" class="text-xs font-bold text-purple-700 hover:text-purple-800 cursor-pointer">+ Añadir</button>  
+                    </div>  
+                    <div class="overflow-x-auto max-h-96">  
+                        <table class="w-full text-xs text-left">  
+                            <thead class="text-[10px] uppercase bg-slate-50 text-slate-400 font-bold border-b border-slate-200">  
+                                <tr>  
+                                    <th class="px-4 py-2.5">Nodo / Zona</th>  
+                                    <th class="px-4 py-2.5">Director</th>  
+                                    <th class="px-4 py-2.5 text-right">Acción</th>  
+                                </tr>  
+                            </thead>  
+                            <tbody id="tableMasterNodes" class="divide-y divide-slate-100 font-medium">  
+                                <!-- Populated dynamically -->  
+                            </tbody>  
+                        </table>  
+                    </div>  
+                </div>  
+  
+                <!-- 2. Supervisors Table Card -->  
+                <div class="lg:col-span-4 bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">  
+                    <div class="px-5 py-3.5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">  
+                        <h4 class="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-2">  
+                            <i data-lucide="users" class="w-4 h-4 text-amber-600"></i>  
+                            Jefes de Zona  
+                        </h4>  
+                        <button id="btnSmallAddSup" class="text-xs font-bold text-amber-700 hover:text-amber-800 cursor-pointer">+ Añadir</button>  
+                    </div>  
+                    <div class="overflow-x-auto max-h-96">  
+                        <table class="w-full text-xs text-left">  
+                            <thead class="text-[10px] uppercase bg-slate-50 text-slate-400 font-bold border-b border-slate-200">  
+                                <tr>  
+                                    <th class="px-4 py-2.5">Nombre Jefe</th>  
+                                    <th class="px-4 py-2.5">Nodo Asignado</th>  
+                                    <th class="px-4 py-2.5 text-right">Acción</th>  
+                                </tr>  
+                            </thead>  
+                            <tbody id="tableMasterSupervisors" class="divide-y divide-slate-100 font-medium">  
+                                <!-- Populated dynamically -->  
+                            </tbody>  
+                        </table>  
+                    </div>  
+                </div>  
+  
+                <!-- 3. Agencies Table Card -->  
+                <div class="lg:col-span-4 bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">  
+                    <div class="px-5 py-3.5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">  
+                        <h4 class="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-2">  
+                            <i data-lucide="building-2" class="w-4 h-4 text-sky-600"></i>  
+                            Agencias / Canales  
+                        </h4>  
+                        <button id="btnSmallAddAgency" class="text-xs font-bold text-sky-600 hover:text-sky-700 cursor-pointer">+ Añadir</button>  
+                    </div>  
+                    <div class="overflow-x-auto max-h-96">  
+                        <table class="w-full text-xs text-left">  
+                            <thead class="text-[10px] uppercase bg-slate-50 text-slate-400 font-bold border-b border-slate-200">  
+                                <tr>  
+                                    <th class="px-4 py-2.5">Código / Agencia</th>  
+                                    <th class="px-4 py-2.5">Jefe Asignado</th>  
+                                    <th class="px-4 py-2.5 text-right">Acción</th>  
+                                </tr>  
+                            </thead>  
+                            <tbody id="tableMasterAgencies" class="divide-y divide-slate-100 font-medium">  
+                                <!-- Populated dynamically -->  
+                            </tbody>  
+                        </table>  
+                    </div>  
+                </div>  
+  
+            </div>  
+        </section>  
+  
+    </main>  
+  
+    <!-- MODAL: ADD/EDIT NODE -->  
+    <div id="modalNode" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">  
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-100">  
+            <h3 id="modalNodeTitle" class="text-base font-bold text-slate-900">Nuevo Nodo y Director Comercial</h3>  
+            <form id="formNode" class="space-y-3">  
+                <input type="hidden" id="nodeOriginalId">  
+                <div>  
+                    <label class="block text-xs font-bold text-slate-600 mb-1 uppercase">Nombre del Nodo / Zona</label>  
+                    <input type="text" id="nodeInputName" placeholder="Ej. Bello, Castilla, La América, Guayabal..." required class="w-full p-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-none font-semibold">  
+                </div>  
+                <div>  
+                    <label class="block text-xs font-bold text-slate-600 mb-1 uppercase">Nombre del Director Comercial</label>  
+                    <input type="text" id="nodeInputDirector" required placeholder="Ej. Jhon Zapata, Yazmin, Carolina Leal, Johan Cubillos..." class="w-full p-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-none">  
+                </div>  
+                <div class="flex justify-end gap-2 pt-3 border-t border-slate-100">  
+                    <button type="button" class="btn-close-modal px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-xl cursor-pointer">Cancelar</button>  
+                    <button type="submit" class="px-4 py-2 text-xs font-bold bg-purple-600 text-white rounded-xl hover:bg-purple-700 shadow-sm cursor-pointer">Guardar Nodo</button>  
+                </div>  
+            </form>  
+        </div>  
+    </div>  
+  
+    <!-- MODAL: ADD/EDIT SUPERVISOR -->  
+    <div id="modalSupervisor" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">  
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-100">  
+            <h3 id="modalSupTitle" class="text-base font-bold text-slate-900">Nuevo Jefe de Zona</h3>  
+            <form id="formSupervisor" class="space-y-3">  
+                <input type="hidden" id="supEditId">  
+                <div>  
+                    <label class="block text-xs font-bold text-slate-600 mb-1 uppercase">Nodo / Director Asignado</label>  
+                    <select id="supInputZone" required class="w-full p-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none font-semibold">  
+                        <!-- Populated dynamically from appState.nodes -->  
+                    </select>  
+                </div>  
+                <div>  
+                    <label class="block text-xs font-bold text-slate-600 mb-1 uppercase">Nombre Completo del Jefe de Zona</label>  
+                    <input type="text" id="supInputName" required placeholder="Ej. Yenny Cárdenas" class="w-full p-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">  
+                </div>  
+                <div class="flex justify-end gap-2 pt-3 border-t border-slate-100">  
+                    <button type="button" class="btn-close-modal px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-xl cursor-pointer">Cancelar</button>  
+                    <button type="submit" class="px-4 py-2 text-xs font-bold bg-sky-600 text-white rounded-xl hover:bg-sky-700 shadow-sm cursor-pointer">Guardar</button>  
+                </div>  
+            </form>  
+        </div>  
+    </div>  
+  
+    <!-- MODAL: ADD/EDIT AGENCY -->  
+    <div id="modalAgency" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">  
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-100">  
+            <h3 id="modalAgencyTitle" class="text-base font-bold text-slate-900">Nueva Agencia / Canal</h3>  
+            <form id="formAgency" class="space-y-3">  
+                <input type="hidden" id="agencyOriginalId">  
+                <div>  
+                    <label class="block text-xs font-bold text-slate-600 mb-1 uppercase">Código / ID Canal</label>  
+                    <input type="text" id="agencyInputId" placeholder="Ej. AG_NORTE_01" required class="w-full p-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono">  
+                </div>  
+                <div>  
+                    <label class="block text-xs font-bold text-slate-600 mb-1 uppercase">Nombre de Agencia</label>  
+                    <input type="text" id="agencyInputName" placeholder="Ej. Agencia Principal Norte" required class="w-full p-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">  
+                </div>  
+                <div>  
+                    <label class="block text-xs font-bold text-slate-600 mb-1 uppercase">Jefe Asignado</label>  
+                    <select id="agencyInputSupervisor" required class="w-full p-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none font-semibold">  
+                        <!-- Options -->  
+                    </select>  
+                </div>  
+                <div class="flex justify-end gap-2 pt-3 border-t border-slate-100">  
+                    <button type="button" class="btn-close-modal px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-xl cursor-pointer">Cancelar</button>  
+                    <button type="submit" class="px-4 py-2 text-xs font-bold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 shadow-sm cursor-pointer">Guardar</button>  
+                </div>  
+            </form>  
+        </div>  
+    </div>  
+  
+    <!-- MODAL: ADD NOTE TO CELL -->  
+    <div id="modalNote" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">  
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-100">  
+            <div class="flex justify-between items-center border-b pb-2 border-slate-100">  
+                <h3 class="text-sm font-bold text-slate-800">Observación / Novedad de Visita</h3>  
+                <span id="noteCellInfo" class="text-xs bg-slate-100 px-2 py-0.5 rounded font-mono font-bold text-slate-600">Día 1</span>  
+            </div>  
+            <div class="space-y-2">  
+                <textarea id="noteTextarea" rows="4" placeholder="Ingrese acuerdos, motivo de la novedad o detalle..." class="w-full p-3 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none"></textarea>  
+            </div>  
+            <div class="flex justify-between items-center pt-3 border-t border-slate-100">  
+                <button type="button" id="btnDeleteNote" class="px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer">Borrar Nota</button>  
+                <div class="flex gap-2">  
+                    <button type="button" class="btn-close-modal px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-xl cursor-pointer">Cancelar</button>  
+                    <button type="button" id="btnSaveNote" class="px-4 py-2 text-xs font-bold bg-sky-600 text-white rounded-xl hover:bg-sky-700 cursor-pointer">Guardar Nota</button>  
+                </div>  
+            </div>  
+        </div>  
+    </div>  
+  
+    <!-- MODAL: CONFIRMATION -->  
+    <div id="modalConfirm" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">  
+        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4 text-center">  
+            <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto">  
+                <i data-lucide="alert-circle" class="w-6 h-6"></i>  
+            </div>  
+            <div>  
+                <h3 id="confirmTitle" class="font-bold text-slate-800 text-base">¿Está seguro?</h3>  
+                <p id="confirmMessage" class="text-xs text-slate-500 mt-1">Esta acción no se puede deshacer.</p>  
+            </div>  
+            <div class="flex justify-center gap-2 pt-2">  
+                <button id="btnConfirmCancel" class="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl w-1/2 cursor-pointer">Cancelar</button>  
+                <button id="btnConfirmOk" class="px-4 py-2 text-xs font-bold bg-rose-600 text-white rounded-xl hover:bg-rose-700 w-1/2 cursor-pointer">Confirmar</button>  
+            </div>  
+        </div>  
+    </div>  
+  
+    <!-- MODAL: GESTIÓN MAESTRO SECURITY AUTH -->  
+    <div id="modalMasterAuth" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">  
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-100">  
+            <div class="flex items-center gap-3 border-b border-slate-100 pb-3">  
+                <div class="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">  
+                    <i data-lucide="shield-lock" class="w-5 h-5"></i>  
+                </div>  
+                <div>  
+                    <h3 class="text-base font-bold text-slate-900">Autenticación de Seguridad</h3>  
+                    <p class="text-xs text-slate-500">Acceso restringido a Gestión Maestro</p>  
+                </div>  
+            </div>  
+              
+            <p class="text-xs text-slate-600">Para realizar cambios o gestionar los maestros de personal y agencias, ingrese sus credenciales de administrador.</p>  
+              
+            <form id="formMasterAuth" class="space-y-3">  
+                <div>  
+                    <label class="block text-xs font-bold text-slate-600 mb-1 uppercase">Usuario</label>  
+                    <div class="relative">  
+                        <i data-lucide="user" class="w-4 h-4 absolute left-3 top-2.5 text-slate-400"></i>  
+                        <input type="text" id="authUsername" required placeholder="Ej. admin" class="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none">  
+                    </div>  
+                </div>  
+                <div>  
+                    <label class="block text-xs font-bold text-slate-600 mb-1 uppercase">Contraseña</label>  
+                    <div class="relative">  
+                        <i data-lucide="key" class="w-4 h-4 absolute left-3 top-2.5 text-slate-400"></i>  
+                        <input type="password" id="authPassword" required placeholder="••••••••" class="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none">  
+                    </div>  
+                </div>  
+  
+                <div id="authErrorMsg" class="hidden text-xs text-rose-600 font-bold bg-rose-50 border border-rose-200 rounded-lg p-2 flex items-center gap-1.5">  
+                    <i data-lucide="alert-circle" class="w-4 h-4 shrink-0"></i>  
+                    <span>Usuario o contraseña incorrectos.</span>  
+                </div>  
+  
+                <div class="bg-amber-50 border border-amber-200/80 rounded-xl p-2.5 text-[11px] text-amber-800 flex items-center justify-between">  
+                    <span>Credenciales de prueba:</span>  
+                    <span class="font-mono font-bold bg-amber-100 px-2 py-0.5 rounded text-amber-900">admin / admin123</span>  
+                </div>  
+  
+                <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">  
+                    <button type="button" class="btn-close-modal px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-xl cursor-pointer">Cancelar</button>  
+                    <button type="submit" class="px-4 py-2 text-xs font-bold bg-amber-600 text-white rounded-xl hover:bg-amber-700 shadow-sm flex items-center gap-1.5 cursor-pointer">  
+                        <i data-lucide="unlock" class="w-3.5 h-3.5"></i>  
+                        <span>Ingresar</span>  
+                    </button>  
+                </div>  
+            </form>  
+        </div>  
+    </div>  
+  
+    <!-- TOAST CONTAINER -->  
+    <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col space-y-2 pointer-events-none"></div>  
+  
+    <script>  
+        const DEFAULT_NODES = [  
+            { id: "node_bello", name: "Bello", director: "Jhon Zapata" },  
+            { id: "node_castilla", name: "Castilla", director: "Yazmin" },  
+            { id: "node_america", name: "La América", director: "Carolina Leal" },  
+            { id: "node_guayabal", name: "Guayabal", director: "Johan Cubillos" }  
+        ];  
+        window.DEFAULT_NODES = DEFAULT_NODES;  
+  
+        const DEFAULT_SUPERVISORS = [  
+            { id: "sup_zapata_1", name: "Jhon Zapata (Director)", zone: "Bello (Jhon Zapata)" },  
+            { id: "sup_bello_1", name: "Yenny Cárdenas", zone: "Bello (Jhon Zapata)" },  
+            { id: "sup_bello_2", name: "Margarita Rosa", zone: "Bello (Jhon Zapata)" },  
+            { id: "sup_bello_3", name: "Marisela Restrepo", zone: "Bello (Jhon Zapata)" },  
+  
+            { id: "sup_yazmin_1", name: "Yazmin (Directora)", zone: "Castilla (Yazmin)" },  
+            { id: "sup_castilla_1", name: "Dilian", zone: "Castilla (Yazmin)" },  
+            { id: "sup_castilla_2", name: "Kelly Henao", zone: "Castilla (Yazmin)" },  
+  
+            { id: "sup_carolina_1", name: "Carolina Leal (Directora)", zone: "La América (Carolina Leal)" },  
+            { id: "sup_america_1", name: "Jefe Zona América 1", zone: "La América (Carolina Leal)" },  
+  
+            { id: "sup_johan_1", name: "Johan Cubillos (Director)", zone: "Guayabal (Johan Cubillos)" },  
+            { id: "sup_guayabal_1", name: "Jefe Zona Guayabal 1", zone: "Guayabal (Johan Cubillos)" }  
+        ];  
+        window.DEFAULT_SUPERVISORS = DEFAULT_SUPERVISORS;  
+  
+        const MONTH_NAMES = [  
+            "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",  
+            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"  
+        ];  
+  
+        const DEFAULT_AGENCIES = [  
+            { id: "AG_BEL_01", name: "Agencia Bello Central", supervisorId: "sup_bello_1" },  
+            { id: "AG_BEL_02", name: "Punto Express Niquía", supervisorId: "sup_bello_1" },  
+            { id: "AG_BEL_03", name: "Canal Machado", supervisorId: "sup_bello_2" },  
+            { id: "AG_BEL_04", name: "Punto Express Copacabana", supervisorId: "sup_bello_3" },  
+  
+            { id: "AG_CAS_01", name: "Agencia Castilla Principal", supervisorId: "sup_castilla_1" },  
+            { id: "AG_CAS_02", name: "Punto Express Tricentenario", supervisorId: "sup_castilla_1" },  
+            { id: "AG_CAS_03", name: "Canal Pedregal", supervisorId: "sup_castilla_2" },  
+            { id: "AG_CAS_04", name: "Agencia Doce de Octubre", supervisorId: "sup_castilla_2" },  
+  
+            { id: "AG_AME_01", name: "Agencia San Juan", supervisorId: "sup_america_1" },  
+            { id: "AG_AME_02", name: "Punto Express Laureles", supervisorId: "sup_america_1" },  
+  
+            { id: "AG_GUA_01", name: "Agencia Guayabal Plaza", supervisorId: "sup_guayabal_1" },  
+            { id: "AG_GUA_02", name: "Punto Express Terminal Sur", supervisorId: "sup_guayabal_1" }  
+        ];  
+        window.DEFAULT_AGENCIES = DEFAULT_AGENCIES;  
+  
+        let appState = {  
+            year: 2026,  
+            month: 8,  
+            daysInMonth: 31,  
+            nodes: DEFAULT_NODES,  
+            supervisors: DEFAULT_SUPERVISORS,  
+            agencies: DEFAULT_AGENCIES,  
+            visitsMap: {},  
+            notesMap: {},  
+            customLogo: null,  
+            activeTab: 'dashboard'  
+        };  
+        window.appState = appState;  
+  
+        let isMasterAuthenticated = false;  
+        let activeNoteCellContext = null;  
+        let confirmActionCallback = null;  
+  
+        let chartSupervisorsInstance = null;  
+        let chartStatusDoughnutInstance = null;  
+  
+        function getCellKey(agencyId, day) {  
+            return `${agencyId}_${appState.year}_${appState.month}_${day}`;  
+        }  
+  
+        function refreshIcons() {  
+            if (typeof lucide !== 'undefined' && lucide.createIcons) {  
+                lucide.createIcons();  
+            }  
+        }  
+  
+        // Custom Logo Management Functions  
+        function handleLogoUpload(event) {  
+            const file = event.target.files[0];  
+            if (!file) return;  
+            const reader = new FileReader();  
+            reader.onload = function(e) {  
+                appState.customLogo = e.target.result;  
+                saveState();  
+                renderLogoContainer();  
+                showToast("Logotipo institucional actualizado");  
+            };  
+            reader.readAsDataURL(file);  
+        }  
+        window.handleLogoUpload = handleLogoUpload;  
+  
+        function resetLogo() {  
+            appState.customLogo = null;  
+            saveState();  
+            renderLogoContainer();  
+            showToast("Logotipo restaurado al original");  
+        }  
+        window.resetLogo = resetLogo;  
+  
+        function renderLogoContainer() {  
+            const container = document.getElementById('header-logo-container');  
+            const preview = document.getElementById('maestro-logo-preview');  
+            if (!container) return;  
+  
+            if (appState.customLogo) {  
+                container.className = "p-1 rounded-xl flex items-center justify-center overflow-hidden w-12 h-12 bg-transparent";  
+                container.innerHTML = `<img src="${appState.customLogo}" alt="Logo" class="w-full h-full object-contain">`;  
+                if (preview) {  
+                    preview.innerHTML = `<img src="${appState.customLogo}" alt="Logo" class="w-full h-full object-contain">`;  
+                }  
+            } else {  
+                container.className = "bg-sky-600 p-3 rounded-xl text-white font-bold flex items-center justify-center shadow-md w-12 h-12";  
+                container.innerHTML = `<i data-lucide="cloud-cog" class="w-6 h-6"></i>`;  
+                if (preview) {  
+                    preview.innerHTML = `<span class="text-[10px] text-slate-400">Sin logo</span>`;  
+                }  
+            }  
+            refreshIcons();  
+        }  
+        window.renderLogoContainer = renderLogoContainer;  
+  
+        // Save State to BOTH LocalStorage & Firestore Cloud  
+        async function saveState() {  
+            try {  
+                const dataToSave = {  
+                    nodes: appState.nodes,  
+                    supervisors: appState.supervisors,  
+                    agencies: appState.agencies,  
+                    visitsMap: appState.visitsMap,  
+                    notesMap: appState.notesMap,  
+                    customLogo: appState.customLogo  
+                };  
+  
+                localStorage.setItem('visitasa_state', JSON.stringify(dataToSave));  
+  
+                // Save to Firestore Cloud if authenticated  
+                if (window.firebaseDocRef && window.currentUser) {  
+                    const { setDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");  
+                    await setDoc(window.firebaseDocRef, dataToSave, { merge: true });  
+                }  
+  
+                const now = new Date();  
+                const updatedEl = document.getElementById('lastUpdatedText');  
+                if (updatedEl) updatedEl.innerText = `Sincronizado ${now.toLocaleTimeString()}`;  
+            } catch (e) {  
+                console.error("Error guardando estado", e);  
+            }  
+        }  
+        window.saveState = saveState;  
+  
+        // Export State to JSON File Backup  
+        function exportBackupJSON() {  
+            try {  
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({  
+                    nodes: appState.nodes,  
+                    supervisors: appState.supervisors,  
+                    agencies: appState.agencies,  
+                    visitsMap: appState.visitsMap,  
+                    notesMap: appState.notesMap,  
+                    customLogo: appState.customLogo  
+                }, null, 2));  
+                const downloadAnchor = document.createElement('a');  
+                downloadAnchor.setAttribute("href", dataStr);  
+                downloadAnchor.setAttribute("download", `VISITASA_Respaldo_${new Date().toISOString().slice(0, 10)}.json`);  
+                document.body.appendChild(downloadAnchor);  
+                downloadAnchor.click();  
+                downloadAnchor.remove();  
+                showToast("Respaldo JSON generado con éxito");  
+            } catch (e) {  
+                console.error("Error al exportar respaldo JSON", e);  
+                showToast("Error al generar copia de seguridad");  
+            }  
+        }  
+  
+        function loadState() {  
+            const yearEl = document.getElementById('yearSelectHeader');  
+            const monthEl = document.getElementById('monthSelectHeader');  
+            appState.year = parseInt(yearEl?.value || '2026');  
+            appState.month = parseInt(monthEl?.value || '8');  
+            appState.daysInMonth = new Date(appState.year, appState.month, 0).getDate();  
+  
+            try {  
+                const saved = localStorage.getItem('visitasa_state');  
+                if (saved) {  
+                    const parsed = JSON.parse(saved);  
+                    appState.nodes = parsed.nodes && parsed.nodes.length > 0 ? parsed.nodes : DEFAULT_NODES;  
+                    appState.supervisors = parsed.supervisors && parsed.supervisors.length > 0 ? parsed.supervisors : DEFAULT_SUPERVISORS;  
+                    appState.agencies = parsed.agencies && parsed.agencies.length > 0 ? parsed.agencies : DEFAULT_AGENCIES;  
+                    appState.visitsMap = parsed.visitsMap || {};  
+                    appState.notesMap = parsed.notesMap || {};  
+                    appState.customLogo = parsed.customLogo || null;  
+                } else {  
+                    appState.nodes = DEFAULT_NODES;  
+                    appState.supervisors = DEFAULT_SUPERVISORS;  
+                    appState.agencies = DEFAULT_AGENCIES;  
+                      
+                    appState.agencies.forEach(ag => {  
+                        appState.visitsMap[`${ag.id}_2026_8_5`] = 'X';  
+                        appState.visitsMap[`${ag.id}_2026_8_12`] = '✓';  
+                        appState.visitsMap[`${ag.id}_2026_8_20`] = 'X';  
+                    });  
+                }  
+            } catch (e) {  
+                appState.nodes = DEFAULT_NODES;  
+                appState.supervisors = DEFAULT_SUPERVISORS;  
+                appState.agencies = DEFAULT_AGENCIES;  
+            }  
+  
+            populateSupervisorDropdowns();  
+            renderLogoContainer();  
+        }  
+  
+        function populateSupervisorDropdowns() {  
+            const nodeFilter = document.getElementById('headerGlobalNodeFilter');  
+            const globalFilter = document.getElementById('headerGlobalSupervisorFilter');  
+            const agencyModalSelect = document.getElementById('agencyInputSupervisor');  
+            const supModalZoneSelect = document.getElementById('supInputZone');  
+  
+            const selectedNode = nodeFilter?.value || 'ALL';  
+            const selectedSup = globalFilter?.value || 'ALL';  
+  
+            const nodeZones = appState.nodes.map(n => `${n.name} (${n.director})`);  
+            const supZones = appState.supervisors.map(s => s.zone);  
+            const uniqueZones = [...new Set([...nodeZones, ...supZones])];  
+  
+            if (nodeFilter) {  
+                let nodeHtml = `<option value="ALL">-- Todos los Nodos --</option>`;  
+                uniqueZones.forEach(z => {  
+                    nodeHtml += `<option value="${z}">${z}</option>`;  
+                });  
+                nodeFilter.innerHTML = nodeHtml;  
+                nodeFilter.value = uniqueZones.includes(selectedNode) ? selectedNode : 'ALL';  
+            }  
+  
+            if (globalFilter) {  
+                const activeNode = nodeFilter?.value || 'ALL';  
+                let filteredSups = appState.supervisors;  
+                if (activeNode !== 'ALL') {  
+                    filteredSups = appState.supervisors.filter(s => s.zone === activeNode);  
+                }  
+  
+                let supHtml = `<option value="ALL">-- Todos los Jefes ${activeNode !== 'ALL' ? 'del Nodo' : ''} --</option>`;  
+                filteredSups.forEach(s => {  
+                    supHtml += `<option value="${s.id}">${s.name}</option>`;  
+                });  
+                globalFilter.innerHTML = supHtml;  
+  
+                const supExists = filteredSups.some(s => s.id === selectedSup);  
+                globalFilter.value = supExists ? selectedSup : 'ALL';  
+            }  
+  
+            if (supModalZoneSelect) {  
+                let nodeOptions = `<option value="">Seleccione Nodo / Director...</option>`;  
+                uniqueZones.forEach(z => {  
+                    nodeOptions += `<option value="${z}">${z}</option>`;  
+                });  
+                supModalZoneSelect.innerHTML = nodeOptions;  
+            }  
+  
+            let modalOptions = `<option value="">Seleccione Jefe...</option>`;  
+            appState.supervisors.forEach(s => {  
+                modalOptions += `<option value="${s.id}">${s.name} (${s.zone})</option>`;  
+            });  
+            if (agencyModalSelect) agencyModalSelect.innerHTML = modalOptions;  
+        }  
+        window.populateSupervisorDropdowns = populateSupervisorDropdowns;  
+  
+        function getFilteredAgencies() {  
+            const nodeVal = document.getElementById('headerGlobalNodeFilter')?.value || 'ALL';  
+            const supVal = document.getElementById('headerGlobalSupervisorFilter')?.value || 'ALL';  
+  
+            let allowedSupervisors = appState.supervisors;  
+  
+            if (nodeVal !== 'ALL') {  
+                allowedSupervisors = allowedSupervisors.filter(s => s.zone === nodeVal);  
+            }  
+  
+            if (supVal !== 'ALL') {  
+                allowedSupervisors = allowedSupervisors.filter(s => s.id === supVal);  
+            }  
+  
+            const allowedSupIds = allowedSupervisors.map(s => s.id);  
+            return appState.agencies.filter(a => allowedSupIds.includes(a.supervisorId));  
+        }  
+  
+        function getFilteredSupervisors() {  
+            const nodeVal = document.getElementById('headerGlobalNodeFilter')?.value || 'ALL';  
+            const supVal = document.getElementById('headerGlobalSupervisorFilter')?.value || 'ALL';  
+  
+            let result = appState.supervisors;  
+  
+            if (nodeVal !== 'ALL') {  
+                result = result.filter(s => s.zone === nodeVal);  
+            }  
+  
+            if (supVal !== 'ALL') {  
+                result = result.filter(s => s.id === supVal);  
+            }  
+  
+            return result;  
+        }  
+  
+        function getFilteredNodes() {  
+            const nodeVal = document.getElementById('headerGlobalNodeFilter')?.value || 'ALL';  
+            if (nodeVal === 'ALL') return appState.nodes;  
+  
+            return appState.nodes.filter(n => {  
+                const zoneLabel = `${n.name} (${n.director})`;  
+                return zoneLabel === nodeVal;  
+            });  
+        }  
+  
+        function toggleCellState(cellKey) {  
+            const current = appState.visitsMap[cellKey] || '';  
+            if (current === '') appState.visitsMap[cellKey] = 'X';  
+            else if (current === 'X') appState.visitsMap[cellKey] = '✓';  
+            else if (current === '✓') appState.visitsMap[cellKey] = '!';  
+            else delete appState.visitsMap[cellKey];  
+  
+            saveState();  
+            renderActiveTab();  
+        }  
+  
+        function openNoteModal(cellKey, agencyId, day) {  
+            activeNoteCellContext = cellKey;  
+            const agency = appState.agencies.find(a => a.id === agencyId);  
+            document.getElementById('noteCellInfo').innerText = `${agency ? agency.name : agencyId} - Día ${day}`;  
+            document.getElementById('noteTextarea').value = appState.notesMap[cellKey] || '';  
+            document.getElementById('modalNote').classList.remove('hidden');  
+        }  
+  
+        function showToast(msg) {  
+            const container = document.getElementById('toastContainer');  
+            if (!container) return;  
+            const toast = document.createElement('div');  
+            toast.className = "bg-slate-900 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg border border-slate-700 transition transform duration-300 translate-y-2 pointer-events-auto flex items-center gap-2";  
+            toast.innerHTML = `<i data-lucide="info" class="w-4 h-4 text-sky-400"></i><span>${msg}</span>`;  
+            container.appendChild(toast);  
+            refreshIcons();  
+            setTimeout(() => {  
+                toast.classList.add('opacity-0', 'translate-y-4');  
+                setTimeout(() => toast.remove(), 300);  
+            }, 3000);  
+        }  
+  
+        function switchTab(tabId) {  
+            if (tabId === 'master' && !isMasterAuthenticated) {  
+                document.getElementById('modalMasterAuth').classList.remove('hidden');  
+                document.getElementById('authErrorMsg').classList.add('hidden');  
+                return;  
+            }  
+  
+            appState.activeTab = tabId;  
+  
+            document.querySelectorAll('.tab-btn').forEach(btn => {  
+                const isActive = btn.dataset.tab === tabId;  
+                if (isActive) {  
+                    btn.className = "tab-btn px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-white bg-sky-600 shadow-xs transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer";  
+                } else if (btn.dataset.tab === 'master') {  
+                    btn.className = "tab-btn px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-amber-900 bg-amber-100/90 border border-amber-300 hover:bg-amber-200 transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer";  
+                } else {  
+                    btn.className = "tab-btn px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-slate-700 hover:bg-slate-200/60 transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer";  
+                }  
+            });  
+  
+            document.querySelectorAll('.tab-content').forEach(sec => {  
+                sec.classList.toggle('hidden', sec.id !== `tab-${tabId}`);  
+            });  
+  
+            renderActiveTab();  
+        }  
+  
+        function calculateMetrics() {  
+            const filteredAgencies = getFilteredAgencies();  
+            const totalAgenciesCount = filteredAgencies.length;  
+  
+            let totalScheduledVisits = 0;  
+            let totalExecutedVisits = 0;  
+            let totalIssueVisits = 0;  
+            let attendedAgenciesCount = 0;  
+            const unvisitedAgencies = [];  
+  
+            filteredAgencies.forEach(ag => {  
+                let hasExecuted = false;  
+  
+                for (let d = 1; d <= appState.daysInMonth; d++) {  
+                    const key = getCellKey(ag.id, d);  
+                    const status = appState.visitsMap[key];  
+                    if (status === 'X') {  
+                        totalScheduledVisits++;  
+                    } else if (status === '✓') {  
+                        totalExecutedVisits++;  
+                        hasExecuted = true;  
+                    } else if (status === '!') {  
+                        totalIssueVisits++;  
+                    }  
+                }  
+  
+                if (hasExecuted) {  
+                    attendedAgenciesCount++;  
+                } else {  
+                    unvisitedAgencies.push(ag);  
+                }  
+            });  
+  
+            const scheduledAgenciesCount = filteredAgencies.filter(ag => {  
+                for (let d = 1; d <= appState.daysInMonth; d++) {  
+                    const key = getCellKey(ag.id, d);  
+                    if (appState.visitsMap[key] === 'X') return true;  
+                }  
+                return false;  
+            }).length;  
+  
+            const coveragePct = totalAgenciesCount > 0 ? Math.round((attendedAgenciesCount / totalAgenciesCount) * 100) : 0;  
+            const fulfillmentPct = totalScheduledVisits > 0 ? Math.round((totalExecutedVisits / totalScheduledVisits) * 100) : 100;  
+  
+            return {  
+                totalAgenciesCount,  
+                scheduledAgenciesCount,  
+                attendedAgenciesCount,  
+                totalScheduledVisits,  
+                totalExecutedVisits,  
+                totalIssueVisits,  
+                coveragePct,  
+                fulfillmentPct,  
+                unvisitedAgencies  
+            };  
+        }  
+  
+        function updateDashboardKPIs(metrics) {  
+            document.getElementById('kpiTotalAgencies').innerText = metrics.totalAgenciesCount;  
+            document.getElementById('kpiScheduledAgencies').innerText = metrics.scheduledAgenciesCount;  
+            document.getElementById('kpiScheduledAgenciesSub').innerText = `${metrics.scheduledAgenciesCount} de ${metrics.totalAgenciesCount} agencias`;  
+              
+            document.getElementById('kpiCoverage').innerText = `${metrics.coveragePct}%`;  
+            document.getElementById('kpiAttendedSub').innerText = `${metrics.attendedAgenciesCount} de ${metrics.totalAgenciesCount} atendidas`;  
+  
+            document.getElementById('kpiScheduledVisits').innerText = metrics.totalScheduledVisits;  
+            document.getElementById('kpiExecutedVisits').innerText = metrics.totalExecutedVisits;  
+            document.getElementById('kpiFulfillment').innerText = `${metrics.fulfillmentPct}%`;  
+  
+            document.getElementById('kpiUnvisited').innerText = metrics.unvisitedAgencies.length;  
+            document.getElementById('kpiUnvisitedSub').innerText = `${metrics.unvisitedAgencies.length} sin visita ejecutada`;  
+        }  
+  
+        function renderAuditUnvisitedTable(unvisitedList) {  
+            const tbody = document.getElementById('tableUnvisitedBody');  
+            const badge = document.getElementById('unvisitedCountBadge');  
+            if (badge) badge.innerText = `${unvisitedList.length} Agencias`;  
+  
+            if (!tbody) return;  
+  
+            let html = "";  
+            unvisitedList.forEach(ag => {  
+                const sup = appState.supervisors.find(s => s.id === ag.supervisorId) || { name: 'Sin Asignar', zone: '-' };  
+                html += `  
+                    <tr class="hover:bg-amber-50/50 transition">  
+                        <td class="px-6 py-3 font-mono font-bold text-slate-500">${ag.id}</td>  
+                        <td class="px-6 py-3 font-bold text-slate-800">${ag.name}</td>  
+                        <td class="px-6 py-3 font-semibold text-slate-600">${sup.name} <span class="text-slate-400 font-normal">(${sup.zone})</span></td>  
+                        <td class="px-6 py-3 text-center">  
+                            <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">Sin Visita Ejecutada</span>  
+                        </td>  
+                    </tr>  
+                `;  
+            });  
+  
+            if (unvisitedList.length === 0) {  
+                html = `<tr><td colspan="4" class="text-center py-6 text-slate-400 font-medium">¡Todas las agencias del filtro han registrado al menos una visita ejecutada!</td></tr>`;  
+            }  
+  
+            tbody.innerHTML = html;  
+        }  
+  
+        function renderMasterNodesTable() {  
+            const tbody = document.getElementById('tableMasterNodes');  
+            if (!tbody) return;  
+  
+            const filteredNodes = getFilteredNodes();  
+  
+            let html = "";  
+            filteredNodes.forEach(n => {  
+                html += `  
+                    <tr class="hover:bg-slate-50 transition border-b border-slate-100">  
+                        <td class="px-4 py-2.5 font-bold text-slate-800">${n.name}</td>  
+                        <td class="px-4 py-2.5 text-purple-700 font-semibold">${n.director}</td>  
+                        <td class="px-4 py-2.5 text-right space-x-1">  
+                            <button onclick="editNode('${n.id}')" class="p-1 text-slate-500 hover:text-purple-600 rounded cursor-pointer"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>  
+                            <button onclick="confirmDeleteNode('${n.id}')" class="p-1 text-slate-500 hover:text-rose-600 rounded cursor-pointer"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>  
+                        </td>  
+                    </tr>  
+                `;  
+            });  
+  
+            if (filteredNodes.length === 0) {  
+                html = `<tr><td colspan="3" class="text-center py-6 text-slate-400 font-medium">No hay nodos coincidentes.</td></tr>`;  
+            }  
+  
+            tbody.innerHTML = html;  
+        }  
+  
+        function renderMasterSupervisorsTable() {  
+            const tbody = document.getElementById('tableMasterSupervisors');  
+            if (!tbody) return;  
+  
+            const filteredSupervisors = getFilteredSupervisors();  
+  
+            let html = "";  
+            filteredSupervisors.forEach(s => {  
+                html += `  
+                    <tr class="hover:bg-slate-50 transition border-b border-slate-100">  
+                        <td class="px-4 py-2.5 font-bold text-slate-800">${s.name}</td>  
+                        <td class="px-4 py-2.5 text-slate-600">${s.zone}</td>  
+                        <td class="px-4 py-2.5 text-right space-x-1">  
+                            <button onclick="editSupervisor('${s.id}')" class="p-1 text-slate-500 hover:text-sky-600 rounded cursor-pointer"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>  
+                            <button onclick="confirmDeleteSupervisor('${s.id}')" class="p-1 text-slate-500 hover:text-rose-600 rounded cursor-pointer"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>  
+                        </td>  
+                    </tr>  
+                `;  
+            });  
+  
+            if (filteredSupervisors.length === 0) {  
+                html = `<tr><td colspan="3" class="text-center py-6 text-slate-400 font-medium">No hay jefes de zona coincidentes.</td></tr>`;  
+            }  
+  
+            tbody.innerHTML = html;  
+        }  
+  
+        function renderMasterAgenciesTable() {  
+            const tbody = document.getElementById('tableMasterAgencies');  
+            if (!tbody) return;  
+  
+            const searchQuery = (document.getElementById('inputSearchAgencyMaster')?.value || '').toLowerCase();  
+            const allowedAgencies = getFilteredAgencies();  
+  
+            const filteredAgencies = allowedAgencies.filter(a =>   
+                a.name.toLowerCase().includes(searchQuery) ||   
+                a.id.toLowerCase().includes(searchQuery)  
+            );  
+  
+            let html = "";  
+            filteredAgencies.forEach(ag => {  
+                const sup = appState.supervisors.find(s => s.id === ag.supervisorId) || { name: 'Sin Asignar' };  
+                html += `  
+                    <tr class="hover:bg-slate-50 transition border-b border-slate-100">  
+                        <td class="px-4 py-2.5 font-bold text-slate-800">  
+                            <div>${ag.name}</div>  
+                            <div class="text-[10px] font-mono text-slate-400 font-normal">${ag.id}</div>  
+                        </td>  
+                        <td class="px-4 py-2.5 text-slate-600 font-medium">${sup.name}</td>  
+                        <td class="px-4 py-2.5 text-right space-x-1">  
+                            <button onclick="editAgency('${ag.id}')" class="p-1 text-slate-500 hover:text-sky-600 rounded cursor-pointer"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>  
+                            <button onclick="confirmDeleteAgency('${ag.id}')" class="p-1 text-slate-500 hover:text-rose-600 rounded cursor-pointer"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>  
+                        </td>  
+                    </tr>  
+                `;  
+            });  
+  
+            if (filteredAgencies.length === 0) {  
+                html = `<tr><td colspan="3" class="text-center py-6 text-slate-400 font-medium">No se encontraron agencias.</td></tr>`;  
+            }  
+  
+            tbody.innerHTML = html;  
+        }  
+  
+        window.editNode = function(id) {  
+            const node = appState.nodes.find(n => n.id === id);  
+            if (!node) return;  
+            document.getElementById('modalNodeTitle').innerText = "Editar Nodo y Director Comercial";  
+            document.getElementById('nodeOriginalId').value = node.id;  
+            document.getElementById('nodeInputName').value = node.name;  
+            document.getElementById('nodeInputDirector').value = node.director;  
+            document.getElementById('modalNode').classList.remove('hidden');  
+        };  
+  
+        window.confirmDeleteNode = function(id) {  
+            const node = appState.nodes.find(n => n.id === id);  
+            confirmActionCallback = () => {  
+                appState.nodes = appState.nodes.filter(n => n.id !== id);  
+                saveState();  
+                populateSupervisorDropdowns();  
+                renderActiveTab();  
+                showToast("Nodo eliminado");  
+            };  
+            document.getElementById('confirmTitle').innerText = "Eliminar Nodo / Director";  
+            document.getElementById('confirmMessage').innerText = `¿Está seguro de eliminar el nodo '${node ? node.name : id}'?`;  
+            document.getElementById('modalConfirm').classList.remove('hidden');  
+        };  
+  
+        window.editSupervisor = function(id) {  
+            populateSupervisorDropdowns();  
+            const sup = appState.supervisors.find(s => s.id === id);  
+            if (!sup) return;  
+            document.getElementById('modalSupTitle').innerText = "Editar Jefe de Zona";  
+            document.getElementById('supEditId').value = sup.id;  
+            document.getElementById('supInputName').value = sup.name;  
+            document.getElementById('supInputZone').value = sup.zone;  
+            document.getElementById('modalSupervisor').classList.remove('hidden');  
+        };  
+  
+        window.confirmDeleteSupervisor = function(id) {  
+            confirmActionCallback = () => {  
+                appState.supervisors = appState.supervisors.filter(s => s.id !== id);  
+                saveState();  
+                populateSupervisorDropdowns();  
+                renderActiveTab();  
+                showToast("Jefe eliminado");  
+            };  
+            document.getElementById('confirmTitle').innerText = "Eliminar Jefe de Zona";  
+            document.getElementById('confirmMessage').innerText = "Las agencias asignadas a este jefe quedarán huérfanas.";  
+            document.getElementById('modalConfirm').classList.remove('hidden');  
+        };  
+  
+        window.editAgency = function(id) {  
+            populateSupervisorDropdowns();  
+            const ag = appState.agencies.find(a => a.id === id);  
+            if (!ag) return;  
+            document.getElementById('modalAgencyTitle').innerText = "Editar Agencia / Canal";  
+            document.getElementById('agencyOriginalId').value = ag.id;  
+            document.getElementById('agencyInputId').value = ag.id;  
+            document.getElementById('agencyInputName').value = ag.name;  
+            document.getElementById('agencyInputSupervisor').value = ag.supervisorId;  
+            document.getElementById('modalAgency').classList.remove('hidden');  
+        };  
+  
+        window.confirmDeleteAgency = function(id) {  
+            confirmActionCallback = () => {  
+                appState.agencies = appState.agencies.filter(a => a.id !== id);  
+                saveState();  
+                renderActiveTab();  
+                showToast("Agencia eliminada");  
+            };  
+            document.getElementById('confirmTitle').innerText = "Eliminar Agencia";  
+            document.getElementById('confirmMessage').innerText = "Se eliminarán también los registros de visitas de esta agencia.";  
+            document.getElementById('modalConfirm').classList.remove('hidden');  
+        };  
+  
+        // EXPORT SPECIFICALLY CONSOLIDATED SUPERVISOR STATS TABLE  
+        function exportSupervisorStatsToExcel() {  
+            try {  
+                const sheetData = [];  
+                const nodeVal = document.getElementById('headerGlobalNodeFilter')?.value || 'ALL';  
+                const supVal = document.getElementById('headerGlobalSupervisorFilter')?.value || 'ALL';  
+  
+                sheetData.push(["VISITASA - RENDIMIENTO CONSOLIDADO POR JEFE REGIONAL"]);  
+                sheetData.push([`Período: ${MONTH_NAMES[appState.month - 1]} ${appState.year}`]);  
+                sheetData.push([`Filtro Nodo: ${nodeVal} | Filtro Jefe: ${supVal}`]);  
+                sheetData.push([]);  
+  
+                sheetData.push([  
+                    "JEFE DE ZONA",   
+                    "DIRECTOR / NODO",   
+                    "AGENCIAS",   
+                    "ATENDIDAS",   
+                    "% COBERTURA",   
+                    "PROG. (X)",   
+                    "EJEC. (✓)",   
+                    "NOVEDAD (!)",   
+                    "% CUMPLIMIENTO",   
+                    "ESTADO"  
+                ]);  
+  
+                const supervisorsToDisplay = getFilteredSupervisors();  
+  
+                supervisorsToDisplay.forEach(s => {  
+                    const supAgencies = appState.agencies.filter(a => a.supervisorId === s.id);  
+                    const totalAg = supAgencies.length;  
+                    let attendedAg = 0;  
+                    let scheduledV = 0;  
+                    let executedV = 0;  
+                    let issueV = 0;  
+  
+                    supAgencies.forEach(ag => {  
+                        let hasExec = false;  
+                        for (let d = 1; d <= appState.daysInMonth; d++) {  
+                            const key = getCellKey(ag.id, d);  
+                            const val = appState.visitsMap[key];  
+                            if (val === 'X') scheduledV++;  
+                            else if (val === '✓') {  
+                                executedV++;  
+                                hasExec = true;  
+                            } else if (val === '!') issueV++;  
+                        }  
+                        if (hasExec) attendedAg++;  
+                    });  
+  
+                    const cov = totalAg > 0 ? Math.round((attendedAg / totalAg) * 100) : 0;  
+                    const ful = scheduledV > 0 ? Math.round((executedV / scheduledV) * 100) : 100;  
+  
+                    let statusLabel = "Óptimo";  
+                    if (cov < 50) statusLabel = "Crítico";  
+                    else if (cov < 80) statusLabel = "En Progreso";  
+  
+                    sheetData.push([  
+                        s.name,  
+                        s.zone,  
+                        totalAg,  
+                        attendedAg,  
+                        `${cov}%`,  
+                        scheduledV,  
+                        executedV,  
+                        issueV,  
+                        `${ful}%`,  
+                        statusLabel  
+                    ]);  
+                });  
+  
+                const ws = XLSX.utils.aoa_to_sheet(sheetData);  
+                const wb = XLSX.utils.book_new();  
+                XLSX.utils.book_append_sheet(wb, ws, "Consolidado Jefes");  
+                XLSX.writeFile(wb, `VISITASA_Consolidado_Jefes_${appState.year}_${appState.month}.xlsx`);  
+                showToast("Reporte consolidado exportado a Excel");  
+            } catch (e) {  
+                console.error("Error al exportar consolidado", e);  
+                showToast("Error al generar reporte de rendimiento");  
+            }  
+        }  
+  
+        // EXPORT MATRIX VISITS MATRIX TO EXCEL  
+        function exportToExcel() {  
+            try {  
+                const metrics = calculateMetrics();  
+                const sheetData = [];  
+  
+                sheetData.push(["VISITASA - REPORTE DETALLADO DE MATRIZ DE VISITAS"]);  
+                sheetData.push([`Período: ${MONTH_NAMES[appState.month - 1]} ${appState.year}`]);  
+                sheetData.push([]);  
+                sheetData.push(["RESUMEN DE INDICADORES"]);  
+                sheetData.push(["Total Agencias", metrics.totalAgenciesCount]);  
+                sheetData.push(["Agencias Atendidas", metrics.attendedAgenciesCount]);  
+                sheetData.push(["Cobertura", `${metrics.coveragePct}%`]);  
+                sheetData.push(["Visitas Programadas", metrics.totalScheduledVisits]);  
+                sheetData.push(["Visitas Ejecutadas", metrics.totalExecutedVisits]);  
+                sheetData.push(["Cumplimiento", `${metrics.fulfillmentPct}%`]);  
+                sheetData.push([]);  
+  
+                const headers = ["ID Agencia", "Agencia / Canal", "Jefe de Zona"];  
+                for (let d = 1; d <= appState.daysInMonth; d++) headers.push(`Día ${d}`);  
+                sheetData.push(headers);  
+  
+                const filteredAgencies = getFilteredAgencies();  
+  
+                filteredAgencies.forEach(ag => {  
+                    const sup = appState.supervisors.find(s => s.id === ag.supervisorId) || { name: 'Sin Asignar' };  
+                    const row = [ag.id, ag.name, sup.name];  
+                    for (let d = 1; d <= appState.daysInMonth; d++) {  
+                        const key = getCellKey(ag.id, d);  
+                        row.push(appState.visitsMap[key] || '');  
+                    }  
+                    sheetData.push(row);  
+                });  
+  
+                const ws = XLSX.utils.aoa_to_sheet(sheetData);  
+                const wb = XLSX.utils.book_new();  
+                XLSX.utils.book_append_sheet(wb, ws, "Matriz Visitas");  
+                XLSX.writeFile(wb, `VISITASA_Matriz_Visitas_${appState.year}_${appState.month}.xlsx`);  
+                showToast("Matriz de visitas exportada a Excel");  
+            } catch (e) {  
+                console.error("Error al exportar a Excel", e);  
+                showToast("Error al generar archivo Excel");  
+            }  
+        }  
+  
+        function renderActiveTab() {  
+            const yearEl = document.getElementById('yearSelectHeader');  
+            const monthEl = document.getElementById('monthSelectHeader');  
+            appState.year = parseInt(yearEl?.value || '2026');  
+            appState.month = parseInt(monthEl?.value || '8');  
+            appState.daysInMonth = new Date(appState.year, appState.month, 0).getDate();  
+  
+            const metrics = calculateMetrics();  
+  
+            if (appState.activeTab === 'dashboard') {  
+                updateDashboardKPIs(metrics);  
+                renderSupervisorStatsTable();  
+                renderCharts(metrics);  
+            } else if (appState.activeTab === 'matrix') {  
+                renderMatrix();  
+            } else if (appState.activeTab === 'supervisors') {  
+                renderSupervisorDetail();  
+            } else if (appState.activeTab === 'audit') {  
+                renderAuditUnvisitedTable(metrics.unvisitedAgencies);  
+            } else if (appState.activeTab === 'master') {  
+                renderMasterNodesTable();  
+                renderMasterSupervisorsTable();  
+                renderMasterAgenciesTable();  
+            }  
+  
+            refreshIcons();  
+        }  
+        window.renderActiveTab = renderActiveTab;  
+  
+        function renderSupervisorStatsTable() {  
+            const tbody = document.getElementById('tableSupervisorStats');  
+            if (!tbody) return;  
+  
+            const supervisorsToDisplay = getFilteredSupervisors();  
+  
+            let html = "";  
+            supervisorsToDisplay.forEach(s => {  
+                const supAgencies = appState.agencies.filter(a => a.supervisorId === s.id);  
+                const totalAg = supAgencies.length;  
+                let attendedAg = 0;  
+                let scheduledV = 0;  
+                let executedV = 0;  
+                let issueV = 0;  
+  
+                supAgencies.forEach(ag => {  
+                    let hasExec = false;  
+                    for (let d = 1; d <= appState.daysInMonth; d++) {  
+                        const key = getCellKey(ag.id, d);  
+                        const val = appState.visitsMap[key];  
+                        if (val === 'X') scheduledV++;  
+                        else if (val === '✓') {  
+                            executedV++;  
+                            hasExec = true;  
+                        } else if (val === '!') issueV++;  
+                    }  
+                    if (hasExec) attendedAg++;  
+                });  
+  
+                const cov = totalAg > 0 ? Math.round((attendedAg / totalAg) * 100) : 0;  
+                const ful = scheduledV > 0 ? Math.round((executedV / scheduledV) * 100) : 100;  
+  
+                let statusBadge = `<span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Óptimo</span>`;  
+                if (cov < 50) statusBadge = `<span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">Crítico</span>`;  
+                else if (cov < 80) statusBadge = `<span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">En Progreso</span>`;  
+  
+                html += `  
+                    <tr class="hover:bg-slate-50 transition">  
+                        <td class="px-6 py-3 font-bold text-slate-800">  
+                            <div>${s.name}</div>  
+                            <div class="text-[10px] font-normal text-slate-400">${s.zone}</div>  
+                        </td>  
+                        <td class="px-4 py-3 text-center font-bold">${totalAg}</td>  
+                        <td class="px-4 py-3 text-center font-bold text-emerald-600">${attendedAg}</td>  
+                        <td class="px-4 py-3 text-center">  
+                            <div class="flex items-center justify-center gap-1.5">  
+                                <span class="font-bold text-slate-700">${cov}%</span>  
+                                <div class="w-12 bg-slate-200 h-1.5 rounded-full overflow-hidden hidden sm:block">  
+                                    <div class="bg-emerald-500 h-full" style="width: ${cov}%"></div>  
+                                </div>  
+                            </div>  
+                        </td>  
+                        <td class="px-4 py-3 text-center text-blue-600 font-bold">${scheduledV}</td>  
+                        <td class="px-4 py-3 text-center text-indigo-600 font-bold">${executedV}</td>  
+                        <td class="px-4 py-3 text-center text-amber-600 font-bold">${issueV}</td>  
+                        <td class="px-4 py-3 text-center font-bold text-purple-600">${ful}%</td>  
+                        <td class="px-6 py-3 text-center">${statusBadge}</td>  
+                    </tr>  
+                `;  
+            });  
+  
+            if (supervisorsToDisplay.length === 0) {  
+                html = `<tr><td colspan="9" class="text-center py-6 text-slate-400 font-medium">No se encontraron jefes en el nodo seleccionado.</td></tr>`;  
+            }  
+  
+            tbody.innerHTML = html;  
+        }  
+  
+        function renderCharts(metrics) {  
+            const filteredSupervisors = getFilteredSupervisors();  
+  
+            const ctx1 = document.getElementById('chartSupervisors')?.getContext('2d');  
+            if (ctx1) {  
+                const labels = filteredSupervisors.map(s => s.name);  
+                const data = filteredSupervisors.map(s => {  
+                    const supAgencies = appState.agencies.filter(a => a.supervisorId === s.id);  
+                    if (supAgencies.length === 0) return 0;  
+                    let attended = 0;  
+                    supAgencies.forEach(ag => {  
+                        let hasExec = false;  
+                        for (let d = 1; d <= appState.daysInMonth; d++) {  
+                            const key = getCellKey(ag.id, d);  
+                            if (appState.visitsMap[key] === '✓') hasExec = true;  
+                        }  
+                        if (hasExec) attended++;  
+                    });  
+                    return Math.round((attended / supAgencies.length) * 100);  
+                });  
+  
+                if (chartSupervisorsInstance) chartSupervisorsInstance.destroy();  
+                chartSupervisorsInstance = new Chart(ctx1, {  
+                    type: 'bar',  
+                    data: {  
+                        labels: labels,  
+                        datasets: [{  
+                            label: 'Cobertura (%)',  
+                            data: data,  
+                            backgroundColor: '#0284c7',  
+                            borderRadius: 8  
+                        }]  
+                    },  
+                    options: {  
+                        responsive: true,  
+                        maintainAspectRatio: false,  
+                        scales: {  
+                            y: { beginAtZero: true, max: 100 }  
+                        },  
+                        plugins: { legend: { display: false } }  
+                    }  
+                });  
+            }  
+  
+            const ctx2 = document.getElementById('chartStatusDoughnut')?.getContext('2d');  
+            if (ctx2) {  
+                if (chartStatusDoughnutInstance) chartStatusDoughnutInstance.destroy();  
+                chartStatusDoughnutInstance = new Chart(ctx2, {  
+                    type: 'doughnut',  
+                    data: {  
+                        labels: ['Ejecutadas (✓)', 'Programadas (X)', 'Novedades (!)'],  
+                        datasets: [{  
+                            data: [metrics.totalExecutedVisits, metrics.totalScheduledVisits, metrics.totalIssueVisits],  
+                            backgroundColor: ['#10b981', '#3b82f6', '#f59e0b']  
+                        }]  
+                    },  
+                    options: {  
+                        responsive: true,  
+                        maintainAspectRatio: false,  
+                        plugins: { legend: { position: 'bottom' } }  
+                    }  
+                });  
+            }  
+        }  
+  
+        function renderMatrix() {  
+            const headerRow = document.getElementById('matrixHeaderRow');  
+            const tbody = document.getElementById('matrixTableBody');  
+            if (!headerRow || !tbody) return;  
+  
+            let headerHtml = `  
+                <th class="px-3 py-2 sticky-col-1 bg-slate-100 text-slate-600 text-center w-14 border-r border-slate-200">N°</th>  
+                <th class="px-4 py-2 sticky-col-2 bg-slate-100 text-slate-700 min-w-[180px] border-r border-slate-200">AGENCIA / CANAL</th>  
+                <th class="px-4 py-2 sticky-col-3 bg-slate-100 text-slate-700 min-w-[150px] border-r border-slate-300">JEFE ZONA</th>  
+            `;  
+  
+            for (let d = 1; d <= appState.daysInMonth; d++) {  
+                headerHtml += `<th class="px-2 py-2 text-center w-8 min-w-[32px] border-r border-slate-200">${d}</th>`;  
+            }  
+            headerRow.innerHTML = headerHtml;  
+  
+            const filteredAgencies = getFilteredAgencies();  
+  
+            let bodyHtml = "";  
+            filteredAgencies.forEach((ag, idx) => {  
+                const sup = appState.supervisors.find(s => s.id === ag.supervisorId) || { name: 'Sin Asignar' };  
+  
+                bodyHtml += `<tr class="hover:bg-slate-50 border-b border-slate-200">`;  
+                bodyHtml += `<td class="px-3 py-2 sticky-col-1 bg-white font-mono font-bold text-slate-400 text-center border-r border-slate-200">${idx + 1}</td>`;  
+                bodyHtml += `<td class="px-4 py-2 sticky-col-2 bg-white font-bold text-slate-800 truncate border-r border-slate-200" title="${ag.name}">${ag.name}</td>`;  
+                bodyHtml += `<td class="px-4 py-2 sticky-col-3 bg-white font-semibold text-slate-600 truncate border-r border-slate-300" title="${sup.name}">${sup.name}</td>`;  
+  
+                for (let d = 1; d <= appState.daysInMonth; d++) {  
+                    const cellKey = getCellKey(ag.id, d);  
+                    const cellValue = appState.visitsMap[cellKey] || '';  
+                    const cellNote = appState.notesMap[cellKey] || '';  
+  
+                    let styleClass = 'cell-empty';  
+                    if (cellValue === 'X') styleClass = 'cell-scheduled';  
+                    else if (cellValue === '✓') styleClass = 'cell-executed';  
+                    else if (cellValue === '!') styleClass = 'cell-issue';  
+  
+                    if (cellNote) styleClass += ' cell-has-note';  
+  
+                    bodyHtml += `  
+                        <td class="px-1 py-1.5 text-center cursor-pointer select-none transition ${styleClass} border-r border-slate-100"  
+                            data-agency="${ag.id}"  
+                            data-day="${d}"  
+                            title="${cellNote ? 'Nota: ' + cellNote : 'Clic para cambiar, Shift+Clic para Nota'}">  
+                            ${cellValue}  
+                        </td>  
+                    `;  
+                }  
+  
+                bodyHtml += `</tr>`;  
+            });  
+  
+            if (filteredAgencies.length === 0) {  
+                bodyHtml = `<tr><td colspan="${appState.daysInMonth + 3}" class="text-center py-8 text-slate-400 font-medium">No se encontraron agencias asociadas a los filtros activos.</td></tr>`;  
+            }  
+  
+            tbody.innerHTML = bodyHtml;  
+  
+            tbody.querySelectorAll('td[data-agency]').forEach(td => {  
+                td.addEventListener('click', (e) => {  
+                    const agencyId = td.dataset.agency;  
+                    const day = td.dataset.day;  
+                    const cellKey = getCellKey(agencyId, day);  
+  
+                    if (e.shiftKey) {  
+                        openNoteModal(cellKey, agencyId, day);  
+                    } else {  
+                        toggleCellState(cellKey);  
+                    }  
+                });  
+            });  
+        }  
+  
+        function renderSupervisorDetail() {  
+            const nodeVal = document.getElementById('headerGlobalNodeFilter')?.value || 'ALL';  
+            const supVal = document.getElementById('headerGlobalSupervisorFilter')?.value || 'ALL';  
+  
+            const filteredSupervisors = getFilteredSupervisors();  
+  
+            let targetTitle = "Todos los Nodos";  
+            let targetSub = "Consolidado Global";  
+  
+            if (supVal !== 'ALL') {  
+                const sup = appState.supervisors.find(s => s.id === supVal);  
+                if (sup) {  
+                    targetTitle = sup.name;  
+                    targetSub = sup.zone;  
+                }  
+            } else if (nodeVal !== 'ALL') {  
+                targetTitle = `Nodo: ${nodeVal}`;  
+                targetSub = `${filteredSupervisors.length} Jefes en esta Zona`;  
+            }  
+  
+            const supNameEl = document.getElementById('supNameDetail');  
+            const supZoneEl = document.getElementById('supZoneDetail');  
+            const supAvatarEl = document.getElementById('supAvatar');  
+  
+            if (supNameEl) supNameEl.innerText = targetTitle;  
+            if (supZoneEl) supZoneEl.innerText = targetSub;  
+            if (supAvatarEl) supAvatarEl.innerText = targetTitle.substring(0, 2).toUpperCase();  
+  
+            const filteredAgencies = getFilteredAgencies();  
+  
+            const supTotalAgenciesEl = document.getElementById('supTotalAgencies');  
+            const supAgenciesBadgeEl = document.getElementById('supAgenciesBadge');  
+  
+            if (supTotalAgenciesEl) supTotalAgenciesEl.innerText = filteredAgencies.length;  
+            if (supAgenciesBadgeEl) supAgenciesBadgeEl.innerText = `${filteredAgencies.length} Canales`;  
+  
+            let attendedCount = 0;  
+            let listHtml = "";  
+  
+            filteredAgencies.forEach(ag => {  
+                let executedVisits = 0;  
+                let scheduledVisits = 0;  
+  
+                for (let d = 1; d <= appState.daysInMonth; d++) {  
+                    const key = getCellKey(ag.id, d);  
+                    const val = appState.visitsMap[key];  
+                    if (val === '✓') executedVisits++;  
+                    if (val === 'X') scheduledVisits++;  
+                }  
+  
+                if (executedVisits > 0) attendedCount++;  
+  
+                const agSup = appState.supervisors.find(s => s.id === ag.supervisorId) || { name: 'Sin Asignar' };  
+  
+                listHtml += `  
+                    <div class="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between">  
+                        <div>  
+                            <p class="font-bold text-slate-800 text-xs">${ag.name}</p>  
+                            <p class="text-[10px] text-slate-400 font-mono">${ag.id} • ${agSup.name}</p>  
+                        </div>  
+                        <div class="flex items-center gap-3 text-xs">  
+                            <span class="text-blue-600 font-bold">${scheduledVisits} Prog.</span>  
+                            <span class="text-emerald-600 font-bold">${executedVisits} Ejec.</span>  
+                        </div>  
+                    </div>  
+                `;  
+            });  
+  
+            const covPct = filteredAgencies.length > 0 ? Math.round((attendedCount / filteredAgencies.length) * 100) : 0;  
+            const supCovEl = document.getElementById('supCoveragePct');  
+            const supListEl = document.getElementById('supAgenciesList');  
+  
+            if (supCovEl) supCovEl.innerText = `${covPct}%`;  
+            if (supListEl) supListEl.innerHTML = listHtml || `<p class="text-xs text-slate-400 py-4 text-center">No hay agencias asignadas a los filtros activos.</p>`;  
+        }  
+  
+        // EVENT LISTENERS & INITIALIZATION  
+        document.addEventListener('DOMContentLoaded', () => {  
+            loadState();  
+  
+            // Modal Close Buttons  
+            document.querySelectorAll('.btn-close-modal').forEach(btn => {  
+                btn.addEventListener('click', () => {  
+                    document.querySelectorAll('.fixed.inset-0').forEach(m => m.classList.add('hidden'));  
+                });  
+            });  
+  
+            // Tab Buttons Click  
+            document.querySelectorAll('.tab-btn').forEach(btn => {  
+                btn.addEventListener('click', () => switchTab(btn.dataset.tab));  
+            });  
+  
+            // Cascading Node & Supervisor Filter Selects  
+            document.getElementById('headerGlobalNodeFilter')?.addEventListener('change', () => {  
+                populateSupervisorDropdowns();  
+                renderActiveTab();  
+            });  
+  
+            document.getElementById('headerGlobalSupervisorFilter')?.addEventListener('change', () => {  
+                renderActiveTab();  
+            });  
+  
+            document.getElementById('inputSearchAgencyMaster')?.addEventListener('input', () => {  
+                renderMasterAgenciesTable();  
+            });  
+  
+            // Sync Button  
+            document.getElementById('btnSyncCloud')?.addEventListener('click', () => {  
+                saveState();  
+                showToast("¡Datos sincronizados con la Nube!");  
+            });  
+  
+            // Backup JSON File Handlers  
+            document.getElementById('btnExportBackup')?.addEventListener('click', exportBackupJSON);  
+  
+            // Export Menu Buttons  
+            document.getElementById('btnExportMenu')?.addEventListener('click', exportToExcel);  
+            document.getElementById('btnExportDashboard')?.addEventListener('click', exportSupervisorStatsToExcel);  
+  
+            // Modals Trigger  
+            document.getElementById('btnModalAddNode')?.addEventListener('click', () => {  
+                document.getElementById('modalNodeTitle').innerText = "Nuevo Nodo y Director Comercial";  
+                document.getElementById('formNode').reset();  
+                document.getElementById('nodeOriginalId').value = "";  
+                document.getElementById('modalNode').classList.remove('hidden');  
+            });  
+  
+            document.getElementById('btnSmallAddNode')?.addEventListener('click', () => {  
+                document.getElementById('btnModalAddNode').click();  
+            });  
+  
+            document.getElementById('btnModalAddSupervisor')?.addEventListener('click', () => {  
+                populateSupervisorDropdowns();  
+                document.getElementById('modalSupTitle').innerText = "Nuevo Jefe de Zona";  
+                document.getElementById('formSupervisor').reset();  
+                document.getElementById('supEditId').value = "";  
+                document.getElementById('modalSupervisor').classList.remove('hidden');  
+            });  
+  
+            document.getElementById('btnSmallAddSup')?.addEventListener('click', () => {  
+                document.getElementById('btnModalAddSupervisor').click();  
+            });  
+  
+            document.getElementById('btnModalAddAgency')?.addEventListener('click', () => {  
+                populateSupervisorDropdowns();  
+                document.getElementById('modalAgencyTitle').innerText = "Nueva Agencia / Canal";  
+                document.getElementById('formAgency').reset();  
+                document.getElementById('agencyOriginalId').value = "";  
+                document.getElementById('modalAgency').classList.remove('hidden');  
+            });  
+  
+            document.getElementById('btnSmallAddAgency')?.addEventListener('click', () => {  
+                document.getElementById('btnModalAddAgency').click();  
+            });  
+  
+            // Node Form Submit  
+            document.getElementById('formNode')?.addEventListener('submit', (e) => {  
+                e.preventDefault();  
+                const originalId = document.getElementById('nodeOriginalId').value;  
+                const name = document.getElementById('nodeInputName').value.trim();  
+                const director = document.getElementById('nodeInputDirector').value.trim();  
+  
+                if (originalId) {  
+                    const node = appState.nodes.find(n => n.id === originalId);  
+                    if (node) {  
+                        const oldLabel = `${node.name} (${node.director})`;  
+                        const newLabel = `${name} (${director})`;  
+                        node.name = name;  
+                        node.director = director;  
+  
+                        appState.supervisors.forEach(s => {  
+                            if (s.zone === oldLabel) s.zone = newLabel;  
+                        });  
+                    }  
+                } else {  
+                    const newId = `node_${Date.now()}`;  
+                    appState.nodes.push({ id: newId, name, director });  
+                }  
+  
+                saveState();  
+                document.getElementById('modalNode').classList.add('hidden');  
+                populateSupervisorDropdowns();  
+                renderActiveTab();  
+                showToast("Nodo y Director guardados");  
+            });  
+  
+            // Supervisor Form Submit  
+            document.getElementById('formSupervisor')?.addEventListener('submit', (e) => {  
+                e.preventDefault();  
+                const editId = document.getElementById('supEditId').value;  
+                const name = document.getElementById('supInputName').value.trim();  
+                const zone = document.getElementById('supInputZone').value.trim();  
+  
+                if (editId) {  
+                    const sup = appState.supervisors.find(s => s.id === editId);  
+                    if (sup) {  
+                        sup.name = name;  
+                        sup.zone = zone;  
+                    }  
+                } else {  
+                    const newId = `sup_${Date.now()}`;  
+                    appState.supervisors.push({ id: newId, name, zone });  
+                }  
+  
+                saveState();  
+                document.getElementById('modalSupervisor').classList.add('hidden');  
+                populateSupervisorDropdowns();  
+                renderActiveTab();  
+                showToast("Jefe guardado");  
+            });  
+  
+            // Agency Form Submit  
+            document.getElementById('formAgency')?.addEventListener('submit', (e) => {  
+                e.preventDefault();  
+                const originalId = document.getElementById('agencyOriginalId').value;  
+                const newId = document.getElementById('agencyInputId').value.trim();  
+                const name = document.getElementById('agencyInputName').value.trim();  
+                const supervisorId = document.getElementById('agencyInputSupervisor').value;  
+  
+                if (originalId) {  
+                    const ag = appState.agencies.find(a => a.id === originalId);  
+                    if (ag) {  
+                        ag.id = newId;  
+                        ag.name = name;  
+                        ag.supervisorId = supervisorId;  
+                    }  
+                } else {  
+                    appState.agencies.push({ id: newId, name, supervisorId });  
+                }  
+  
+                saveState();  
+                document.getElementById('modalAgency').classList.add('hidden');  
+                renderActiveTab();  
+                showToast("Agencia guardada");  
+            });  
+  
+            // Master Auth Lock  
+            document.getElementById('btnLockMaster')?.addEventListener('click', () => {  
+                isMasterAuthenticated = false;  
+                switchTab('dashboard');  
+                showToast("Acceso a Gestión Maestro bloqueado");  
+            });  
+  
+            // Master Auth Form  
+            document.getElementById('formMasterAuth')?.addEventListener('submit', (e) => {  
+                e.preventDefault();  
+                const u = document.getElementById('authUsername').value.trim();  
+                const p = document.getElementById('authPassword').value.trim();  
+  
+                if (u === 'admin' && p === 'admin123') {  
+                    isMasterAuthenticated = true;  
+                    document.getElementById('modalMasterAuth').classList.add('hidden');  
+                    switchTab('master');  
+                    showToast("Acceso concedido a Gestión Maestro");  
+                } else {  
+                    document.getElementById('authErrorMsg').classList.remove('hidden');  
+                }  
+            });  
+  
+            // Note Modal Actions  
+            document.getElementById('btnSaveNote')?.addEventListener('click', () => {  
+                if (activeNoteCellContext) {  
+                    const noteText = document.getElementById('noteTextarea').value.trim();  
+                    if (noteText) appState.notesMap[activeNoteCellContext] = noteText;  
+                    else delete appState.notesMap[activeNoteCellContext];  
+                    saveState();  
+                    renderMatrix();  
+                    showToast("Nota guardada");  
+                }  
+                document.getElementById('modalNote').classList.add('hidden');  
+            });  
+  
+            document.getElementById('btnDeleteNote')?.addEventListener('click', () => {  
+                if (activeNoteCellContext) {  
+                    delete appState.notesMap[activeNoteCellContext];  
+                    saveState();  
+                    renderMatrix();  
+                    showToast("Nota eliminada");  
+                }  
+                document.getElementById('modalNote').classList.add('hidden');  
+            });  
+  
+            // Confirmation Modal Actions  
+            document.getElementById('btnConfirmOk')?.addEventListener('click', () => {  
+                if (confirmActionCallback) confirmActionCallback();  
+                document.getElementById('modalConfirm').classList.add('hidden');  
+            });  
+  
+            document.getElementById('btnConfirmCancel')?.addEventListener('click', () => {  
+                document.getElementById('modalConfirm').classList.add('hidden');  
+            });  
+  
+            // Month and Year Change Events  
+            document.getElementById('monthSelectHeader')?.addEventListener('change', () => renderActiveTab());  
+            document.getElementById('yearSelectHeader')?.addEventListener('change', () => renderActiveTab());  
+  
+            // Initial Render  
+            renderActiveTab();  
+        });  
+    </script>  
+</body>  
+</html>  
