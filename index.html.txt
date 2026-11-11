@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VISITASA - Control de Visitas y Gestión Maestro</title>
+    <!-- Tailwind CSS (CDN para estilos principales) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js para Gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SheetJS para exportar a Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <style>
+        .matrix-scroll::-webkit-scrollbar { height: 8px; width: 8px; }
+        .matrix-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+        .matrix-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .matrix-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .sticky-col-1 { position: sticky; left: 0px; z-index: 20; }
+        .sticky-col-2 { position: sticky; left: 56px; z-index: 20; }
+        .sticky-col-3 { position: sticky; left: 236px; z-index: 20; }
+        
+        .cell-scheduled { background-color: #dbeafe; color: #1e40af; font-weight: 700; }
+        .cell-executed { background-color: #dcfce7; color: #166534; font-weight: 800; }
+        .cell-issue { background-color: #fef3c7; color: #92400e; font-weight: 800; }
+        .cell-empty { background-color: #ffffff; color: #94a3b8; }
+        .cell-has-note { box-shadow: inset 0 0 0 2px #f59e0b; }
+    </style>
+</head>
+<body class="h-full font-sans text-slate-800 antialiased flex flex-col bg-slate-100 p-3 sm:p-5">
+
+    <!-- HEADER PRINCIPAL -->
+    <header class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 mb-4">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            
+            <div class="flex items-center space-x-3">
+                <div class="bg-sky-600 p-3 rounded-xl text-white font-bold flex items-center justify-center shadow-md">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-2xl font-black text-slate-900 tracking-tight">VISITASA</h1>
+                        <span id="syncBadge" class="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200/80 px-2.5 py-0.5 rounded-full">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            Modo Local Seguro Activo
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-500 font-medium mt-0.5">Control de Visitas y Gestión Maestro de Personal y Agencias</p>
+                </div>
+            </div>
+
+            <!-- CONTROLES Y SELECCIÓN DE FECHA -->
+            <div class="flex flex-wrap items-center gap-2">
+                <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg p-1">
+                    <select id="monthSelectHeader" class="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer px-1 py-1">
+                        <option value="1">Enero</option>
+                        <option value="2">Febrero</option>
+                        <option value="3">Marzo</option>
+                        <option value="4">Abril</option>
+                        <option value="5">Mayo</option>
+                        <option value="6">Junio</option>
+                        <option value="7">Julio</option>
+                        <option value="8" selected>Agosto</option>
+                        <option value="9">Septiembre</option>
+                        <option value="10">Octubre</option>
+                        <option value="11">Noviembre</option>
+                        <option value="12">Diciembre</option>
+                    </select>
+
+                    <select id="yearSelectHeader" class="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer px-1 py-1">
+                        <option value="2025">2025</option>
+                        <option value="2026" selected>2026</option>
+                        <option value="2027">2027</option>
+                    </select>
+                </div>
+
+                <button id="btnExportBackup" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer">
+                    <span>Respaldar JSON</span>
+                </button>
+
+                <button id="btnSyncCloud" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer">
+                    <span>Guardar Cambios</span>
+                </button>
+
+                <button id="btnExportMenu" class="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer">
+                    <span>Exportar Excel</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- BARRA DE ESTADO -->
+        <div id="statusBanner" class="mt-3 bg-emerald-50 border border-emerald-200/80 rounded-xl px-4 py-2 flex flex-col sm:flex-row items-center justify-between text-xs text-emerald-900 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="font-medium">Estado: <strong id="storageStatusText" class="font-bold">Almacenamiento Local del Navegador Habilitado</strong></span>
+            </div>
+            <div class="flex items-center gap-2">
+                <span id="syncStatusBadge" class="px-2.5 py-0.5 rounded-md bg-emerald-200/70 text-emerald-800 font-bold text-[11px]">✓ Modo Seguro Red Empresa</span>
+                <span id="lastUpdatedText" class="text-slate-400 font-normal">Sincronizado</span>
+            </div>
+        </div>
+
+        <!-- PESTAÑAS DE NAVEGACIÓN Y FILTROS -->
+        <div class="mt-3 pt-2.5 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-2">
+            <nav class="flex items-center gap-1 overflow-x-auto py-0.5 matrix-scroll shrink-0" id="tabNavContainer">
+                <button data-tab="dashboard" class="tab-btn px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-white bg-sky-600 transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer">
+                    <span>Indicadores & KPIs</span>
+                </button>
+                <button data-tab="matrix" class="tab-btn px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-slate-700 hover:bg-slate-200/60 transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer">
+                    <span>Matriz de Visitas</span>
+                </button>
+                <button data-tab="supervisors" class="tab-btn px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-slate-700 hover:bg-slate-200/60 transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer">
+                    <span>Control por Jefe</span>
+                </button>
+                <button data-tab="audit" class="tab-btn px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-slate-700 hover:bg-slate-200/60 transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer">
+                    <span>Agencias Críticas</span>
+                </button>
+                <button data-tab="master" class="tab-btn px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-amber-900 bg-amber-100/90 border border-amber-300 hover:bg-amber-200 transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer">
+                    <span>Gestión Maestro</span>
+                </button>
+            </nav>
+
+            <div class="flex flex-wrap items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 shrink-0">
+                <div class="flex items-center gap-1.5">
+                    <span class="text-[11px] font-bold text-slate-600">Nodo:</span>
+                    <select id="headerGlobalNodeFilter" class="bg-transparent text-[11px] font-bold text-slate-800 focus:outline-none cursor-pointer">
+                        <option value="ALL">-- Todos los Nodos --</option>
+                    </select>
+                </div>
+                <div class="h-3 w-px bg-slate-300 hidden sm:block"></div>
+                <div class="flex items-center gap-1.5">
+                    <span class="text-[11px] font-bold text-slate-600">Jefe de Zona:</span>
+                    <select id="headerGlobalSupervisorFilter" class="bg-transparent text-[11px] font-bold text-slate-800 focus:outline-none cursor-pointer">
+                        <option value="ALL">-- Todos los Jefes --</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- SECCIÓN PRINCIPAL -->
+    <main class="flex-1 w-full mx-auto space-y-4">
+
+        <!-- TAB 1: DASHBOARD -->
+        <section id="tab-dashboard" class="tab-content space-y-5">
+            <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
+                    <p class="text-[10px] font-extrabold text-slate-400 uppercase">Total Agencias</p>
+                    <h3 id="kpiTotalAgencies" class="text-2xl font-black text-slate-900 mt-0.5">0</h3>
+                </div>
+                <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
+                    <p class="text-[10px] font-extrabold text-slate-400 uppercase">Agencias Prog.</p>
+                    <h3 id="kpiScheduledAgencies" class="text-2xl font-black text-sky-600 mt-0.5">0</h3>
+                </div>
+                <div class="bg-white p-3 rounded-2xl border border-emerald-200 shadow-xs">
+                    <p class="text-[10px] font-extrabold text-slate-400 uppercase">Cobertura Mes</p>
+                    <h3 id="kpiCoverage" class="text-2xl font-black text-emerald-600 mt-0.5">0%</h3>
+                </div>
+                <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
+                    <p class="text-[10px] font-extrabold text-slate-400 uppercase">Visitas Prog. (X)</p>
+                    <h3 id="kpiScheduledVisits" class="text-2xl font-black text-blue-600 mt-0.5">0</h3>
+                </div>
+                <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
+                    <p class="text-[10px] font-extrabold text-slate-400 uppercase">Visitas Ejec. (✓)</p>
+                    <h3 id="kpiExecutedVisits" class="text-2xl font-black text-indigo-600 mt-0.5">0</h3>
+                </div>
+                <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
+                    <p class="text-[10px] font-extrabold text-slate-400 uppercase">Cumplimiento</p>
+                    <h3 id="kpiFulfillment" class="text-2xl font-black text-purple-600 mt-0.5">0%</h3>
+                </div>
+                <div class="bg-white p-3 rounded-2xl border border-amber-200 shadow-xs">
+                    <p class="text-[10px] font-extrabold text-slate-400 uppercase">Sin Visita</p>
+                    <h3 id="kpiUnvisited" class="text-2xl font-black text-amber-500 mt-0.5">0</h3>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                <div class="lg:col-span-8 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <h4 class="font-bold text-slate-900 text-sm">Cobertura por Jefe de Zona (%)</h4>
+                    <div class="h-64 relative"><canvas id="chartSupervisors"></canvas></div>
+                </div>
+                <div class="lg:col-span-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <h4 class="font-bold text-slate-900 text-sm">Estado Global de Visitas</h4>
+                    <div class="h-64 relative"><canvas id="chartStatusDoughnut"></canvas></div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+                    <h4 class="font-bold text-slate-900 text-sm">Rendimiento Consolidado por Jefe Regional</h4>
+                    <button id="btnExportDashboard" class="text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 px-3.5 py-1.5 rounded-xl border border-slate-300">Exportar Reporte</button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs text-left border-collapse">
+                        <thead class="text-[10px] uppercase bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                            <tr>
+                                <th class="px-6 py-3">JEFE DE ZONA / DIRECTOR</th>
+                                <th class="px-4 py-3 text-center">AGENCIAS</th>
+                                <th class="px-4 py-3 text-center">ATENDIDAS</th>
+                                <th class="px-4 py-3 text-center">% COBERTURA</th>
+                                <th class="px-4 py-3 text-center">PROG. (X)</th>
+                                <th class="px-4 py-3 text-center">EJEC. (✓)</th>
+                                <th class="px-4 py-3 text-center">NOVEDAD (!)</th>
+                                <th class="px-4 py-3 text-center">% CUMPLIMIENTO</th>
+                                <th class="px-6 py-3 text-center">ESTADO</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableSupervisorStats" class="divide-y divide-slate-100 font-medium"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 2: MATRIZ DE VISITAS -->
+        <section id="tab-matrix" class="tab-content hidden space-y-4">
+            <div class="bg-white px-4 py-3 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4 text-xs font-medium">
+                <div class="flex items-center gap-3">
+                    <span class="text-slate-400 font-bold uppercase text-[10px]">Leyenda:</span>
+                    <span class="px-2.5 py-1 rounded bg-blue-100 text-blue-800 font-bold">X = Programada</span>
+                    <span class="px-2.5 py-1 rounded bg-emerald-100 text-emerald-800 font-bold">✓ = Ejecutada</span>
+                    <span class="px-2.5 py-1 rounded bg-amber-100 text-amber-800 font-bold">! = Novedad</span>
+                </div>
+                <div class="text-slate-500 text-[11px]">Clic en celda para cambiar estado | <strong>Shift + Clic</strong> para agregar nota</div>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="overflow-x-auto matrix-scroll max-h-[620px]">
+                    <table class="w-full text-xs text-left border-collapse">
+                        <thead><tr id="matrixHeaderRow" class="bg-slate-100 text-slate-700 font-bold border-b border-slate-300"></tr></thead>
+                        <tbody id="matrixTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 3: CONTROL POR JEFE -->
+        <section id="tab-supervisors" class="tab-content hidden space-y-4">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                <div class="lg:col-span-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <div class="flex items-center gap-4 border-b border-slate-100 pb-4">
+                        <div id="supAvatar" class="w-14 h-14 rounded-2xl bg-sky-600 text-white font-black text-xl flex items-center justify-center">CM</div>
+                        <div>
+                            <h3 id="supNameDetail" class="font-bold text-slate-900 text-base">Carlos Mendoza</h3>
+                            <p id="supZoneDetail" class="text-xs text-slate-500 font-medium">Zona Norte</p>
+                        </div>
+                    </div>
+                    <div class="space-y-2 text-xs">
+                        <div class="flex justify-between"><span class="text-slate-500">Agencias Asignadas:</span><strong id="supTotalAgencies" class="font-bold text-slate-800">0</strong></div>
+                        <div class="flex justify-between"><span class="text-slate-500">Cobertura Mes:</span><strong id="supCoveragePct" class="font-bold text-emerald-600">0%</strong></div>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-8 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h4 class="font-bold text-slate-800 text-sm border-b pb-3">Agencias y Canales Asignados</h4>
+                    <div id="supAgenciesList" class="space-y-2"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 4: AGENCIAS CRÍTICAS -->
+        <section id="tab-audit" class="tab-content hidden space-y-4">
+            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                <h3 class="font-bold text-slate-800 text-sm">Agencias Críticas Sin Visita Ejecutada</h3>
+                <span id="unvisitedCountBadge" class="px-2.5 py-1 bg-amber-100 text-amber-800 font-bold rounded-lg text-xs">0 Agencias</span>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <table class="w-full text-xs text-left border-collapse">
+                    <thead class="text-[10px] uppercase bg-slate-50 text-slate-400 font-bold border-b border-slate-200">
+                        <tr>
+                            <th class="px-6 py-3">CÓDIGO</th>
+                            <th class="px-6 py-3">AGENCIA / CANAL</th>
+                            <th class="px-6 py-3">JEFE DE ZONA</th>
+                            <th class="px-6 py-3 text-center">ESTADO</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableUnvisitedBody" class="divide-y divide-slate-100 font-medium"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- TAB 5: GESTIÓN MAESTRO -->
+        <section id="tab-master" class="tab-content hidden space-y-4">
+            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 justify-between">
+                <input type="text" id="inputSearchAgencyMaster" placeholder="Buscar en maestro..." class="p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl">
+                <div class="flex gap-2">
+                    <button id="btnLockMaster" class="px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold">Bloquear</button>
+                    <button id="btnModalAddNode" class="px-3.5 py-2 bg-purple-600 text-white rounded-xl text-xs font-bold">+ Nuevo Nodo</button>
+                    <button id="btnModalAddSupervisor" class="px-3.5 py-2 bg-amber-600 text-white rounded-xl text-xs font-bold">+ Nuevo Jefe</button>
+                    <button id="btnModalAddAgency" class="px-3.5 py-2 bg-sky-600 text-white rounded-xl text-xs font-bold">+ Nueva Agencia</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                <div class="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="px-5 py-3 border-b bg-slate-50"><h4 class="font-bold text-xs uppercase text-slate-800">Nodos y Directores</h4></div>
+                    <table class="w-full text-xs text-left"><tbody id="tableMasterNodes" class="divide-y divide-slate-100"></tbody></table>
+                </div>
+                <div class="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="px-5 py-3 border-b bg-slate-50"><h4 class="font-bold text-xs uppercase text-slate-800">Jefes de Zona</h4></div>
+                    <table class="w-full text-xs text-left"><tbody id="tableMasterSupervisors" class="divide-y divide-slate-100"></tbody></table>
+                </div>
+                <div class="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="px-5 py-3 border-b bg-slate-50"><h4 class="font-bold text-xs uppercase text-slate-800">Agencias / Canales</h4></div>
+                    <table class="w-full text-xs text-left"><tbody id="tableMasterAgencies" class="divide-y divide-slate-100"></tbody></table>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- MODAL AUTENTICACIÓN MAESTRO -->
+    <div id="modalMasterAuth" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
+            <h3 class="text-base font-bold text-slate-900">Acceso Seguro a Gestión Maestro</h3>
+            <form id="formMasterAuth" class="space-y-3">
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">USUARIO</label>
+                    <input type="text" id="authUsername" required class="w-full p-2 text-xs border rounded-xl" placeholder="admin">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">CONTRASEÑA</label>
+                    <input type="password" id="authPassword" required class="w-full p-2 text-xs border rounded-xl" placeholder="••••••••">
+                </div>
+                <div id="authErrorMsg" class="hidden text-xs text-rose-600 font-bold bg-rose-50 p-2 rounded-lg">Usuario o contraseña incorrectos.</div>
+                <div class="bg-amber-50 p-2 rounded text-[11px] text-amber-800">Prueba: <strong>admin / admin123</strong></div>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" class="btn-close-modal px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 text-xs font-bold bg-amber-600 text-white rounded-xl">Ingresar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- SCRIPT DE LÓGICA LOCAL -->
+    <script>
+        const DEFAULT_NODES = [
+            { id: "node_bello", name: "Bello", director: "Jhon Zapata" },
+            { id: "node_castilla", name: "Castilla", director: "Yazmin" },
+            { id: "node_america", name: "La América", director: "Carolina Leal" },
+            { id: "node_guayabal", name: "Guayabal", director: "Johan Cubillos" }
+        ];
+
+        const DEFAULT_SUPERVISORS = [
+            { id: "sup_bello_1", name: "Yenny Cárdenas", zone: "Bello (Jhon Zapata)" },
+            { id: "sup_castilla_1", name: "Dilian", zone: "Castilla (Yazmin)" },
+            { id: "sup_america_1", name: "Jefe Zona América 1", zone: "La América (Carolina Leal)" },
+            { id: "sup_guayabal_1", name: "Jefe Zona Guayabal 1", zone: "Guayabal (Johan Cubillos)" }
+        ];
+
+        const DEFAULT_AGENCIES = [
+            { id: "AG_BEL_01", name: "Agencia Bello Central", supervisorId: "sup_bello_1" },
+            { id: "AG_CAS_01", name: "Agencia Castilla Principal", supervisorId: "sup_castilla_1" },
+            { id: "AG_AME_01", name: "Agencia San Juan", supervisorId: "sup_america_1" },
+            { id: "AG_GUA_01", name: "Agencia Guayabal Plaza", supervisorId: "sup_guayabal_1" }
+        ];
+
+        let appState = {
+            year: 2026, month: 8, daysInMonth: 31,
+            nodes: DEFAULT_NODES, supervisors: DEFAULT_SUPERVISORS, agencies: DEFAULT_AGENCIES,
+            visitsMap: {}, notesMap: {}, activeTab: 'dashboard'
+        };
+
+        let isMasterAuthenticated = false;
+        let chartSupervisorsInstance = null;
+        let chartStatusDoughnutInstance = null;
+
+        function getCellKey(agencyId, day) { return `${agencyId}_${appState.year}_${appState.month}_${day}`; }
+
+        function saveState() {
+            localStorage.setItem('visitasa_local_db', JSON.stringify({
+                nodes: appState.nodes, supervisors: appState.supervisors, agencies: appState.agencies,
+                visitsMap: appState.visitsMap, notesMap: appState.notesMap
+            }));
+            const updatedEl = document.getElementById('lastUpdatedText');
+            if (updatedEl) updatedEl.innerText = `Guardado Local ${new Date().toLocaleTimeString()}`;
+        }
+
+        function loadState() {
+            try {
+                const saved = localStorage.getItem('visitasa_local_db');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    appState.nodes = parsed.nodes || DEFAULT_NODES;
+                    appState.supervisors = parsed.supervisors || DEFAULT_SUPERVISORS;
+                    appState.agencies = parsed.agencies || DEFAULT_AGENCIES;
+                    appState.visitsMap = parsed.visitsMap || {};
+                    appState.notesMap = parsed.notesMap || {};
+                }
+            } catch (e) { console.error("Error al cargar estado local", e); }
+            populateSupervisorDropdowns();
+        }
+
+        function populateSupervisorDropdowns() {
+            const nodeFilter = document.getElementById('headerGlobalNodeFilter');
+            const globalFilter = document.getElementById('headerGlobalSupervisorFilter');
+            
+            const uniqueZones = [...new Set(appState.nodes.map(n => `${n.name} (${n.director})`))];
+
+            if (nodeFilter) {
+                let nodeHtml = `<option value="ALL">-- Todos los Nodos --</option>`;
+                uniqueZones.forEach(z => nodeHtml += `<option value="${z}">${z}</option>`);
+                nodeFilter.innerHTML = nodeHtml;
+            }
+
+            if (globalFilter) {
+                let supHtml = `<option value="ALL">-- Todos los Jefes --</option>`;
+                appState.supervisors.forEach(s => supHtml += `<option value="${s.id}">${s.name}</option>`);
+                globalFilter.innerHTML = supHtml;
+            }
+        }
+
+        function switchTab(tabId) {
+            if (tabId === 'master' && !isMasterAuthenticated) {
+                document.getElementById('modalMasterAuth').classList.remove('hidden');
+                return;
+            }
+            appState.activeTab = tabId;
+            document.querySelectorAll('.tab-content').forEach(sec => sec.classList.toggle('hidden', sec.id !== `tab-${tabId}`));
+            renderActiveTab();
+        }
+
+        function renderActiveTab() {
+            if (appState.activeTab === 'dashboard') renderDashboard();
+            else if (appState.activeTab === 'matrix') renderMatrix();
+        }
+
+        function renderDashboard() {
+            document.getElementById('kpiTotalAgencies').innerText = appState.agencies.length;
+        }
+
+        function renderMatrix() {
+            const headerRow = document.getElementById('matrixHeaderRow');
+            const tbody = document.getElementById('matrixTableBody');
+            
+            let headerHtml = `<th class="px-3 py-2 text-center">N°</th><th class="px-4 py-2">AGENCIA</th><th class="px-4 py-2">JEFE ZONA</th>`;
+            for (let d = 1; d <= appState.daysInMonth; d++) headerHtml += `<th class="px-2 py-2 text-center">${d}</th>`;
+            headerRow.innerHTML = headerHtml;
+
+            let bodyHtml = "";
+            appState.agencies.forEach((ag, idx) => {
+                const sup = appState.supervisors.find(s => s.id === ag.supervisorId) || { name: 'Sin Asignar' };
+                bodyHtml += `<tr><td class="px-3 py-2">${idx + 1}</td><td class="px-4 py-2 font-bold">${ag.name}</td><td class="px-4 py-2">${sup.name}</td>`;
+                for (let d = 1; d <= appState.daysInMonth; d++) {
+                    const key = getCellKey(ag.id, d);
+                    const val = appState.visitsMap[key] || '';
+                    bodyHtml += `<td class="px-2 py-2 text-center cursor-pointer border" onclick="toggleCell('${key}')">${val}</td>`;
+                }
+                bodyHtml += `</tr>`;
+            });
+            tbody.innerHTML = bodyHtml;
+        }
+
+        window.toggleCell = function(key) {
+            const current = appState.visitsMap[key] || '';
+            if (current === '') appState.visitsMap[key] = 'X';
+            else if (current === 'X') appState.visitsMap[key] = '✓';
+            else if (current === '✓') appState.visitsMap[key] = '!';
+            else delete appState.visitsMap[key];
+            saveState();
+            renderMatrix();
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadState();
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+            document.getElementById('formMasterAuth')?.addEventListener('submit', (e) => {
+                e.preventDefault();
+                if (document.getElementById('authUsername').value === 'admin' && document.getElementById('authPassword').value === 'admin123') {
+                    isMasterAuthenticated = true;
+                    document.getElementById('modalMasterAuth').classList.add('hidden');
+                    switchTab('master');
+                } else {
+                    document.getElementById('authErrorMsg').classList.remove('hidden');
+                }
+            });
+            document.querySelectorAll('.btn-close-modal').forEach(b => b.addEventListener('click', () => document.getElementById('modalMasterAuth').classList.add('hidden')));
+            renderActiveTab();
+        });
+    </script>
+</body>
+</html>
